@@ -1,7 +1,19 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { z } from "zod";
+import { prisma } from "./prisma.js";
 
 const app = new Hono();
+
+// Zod スキーマ(リクエストボディ用)
+const createReservationSchema = z.object({
+  name: z.string().min(1, "名前は必須です"),
+  date: z.iso
+    .datetime({ error: () => "日付形式が正しくありません" })
+    .or(z.string().min(1, { message: "日付は必須です" })),
+  note: z.string().optional(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+});
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -13,29 +25,6 @@ type Reservation = {
   status: ReservationStatus;
 };
 
-const mockReservations: Reservation[] = [
-  {
-    id: 1,
-    name: "山田太郎",
-    date: "2025-01-10T14:00:00+09:00",
-    note: "初回カウンセリング",
-    status: "confirmed",
-  },
-  {
-    id: 2,
-    name: "後藤花子",
-    date: "2025-01-12T10:30:00+09:00",
-    note: "オンライン打ち合わせ",
-    status: "pending",
-  },
-  {
-    id: 3,
-    name: "鈴木一郎",
-    date: "2025-01-15T16:00:00+09:00",
-    status: "cancelled",
-  },
-];
-
 app.get("/", (c) => {
   return c.text("Hello Hono!");
 });
@@ -44,10 +33,47 @@ app.get("/health", (c) => {
   return c.json({ status: "ok", message: "Hono API is running" });
 });
 
-app.get("/reservations", (c) => {
-  return c.json({
-    data: mockReservations,
-  });
+app.get("/reservations", async (c) => {
+  try {
+    const reservations = await prisma.reservation.findMany({
+      orderBy: { date: "asc" },
+    });
+
+    return c.json(reservations);
+  } catch (e) {
+    console.error("Error fetching reservation:", e);
+    return c.json({ error: "Failed to fetch reservations" }, 500);
+  }
+});
+
+app.post("/reservations", async (c) => {
+  try {
+    const body = await c.req.json();
+
+    const parsed = createReservationSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({
+        error: "Invalid request body",
+        details: parsed.error,
+      });
+    }
+
+    const { name, date, note, status } = parsed.data;
+
+    const created = await prisma.reservation.create({
+      data: {
+        name,
+        date: new Date(date),
+        note: note ?? null,
+        status: status ?? "pending",
+      }
+    })
+
+    return c.json(created, 200);
+  } catch (e) {
+    console.error("Error creating reservation", e);
+    return c.json({ error: "Failed to create reservation" }, 500);
+  }
 });
 
 serve(
