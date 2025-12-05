@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { z } from "zod";
 import { prisma } from "./prisma.js";
+import { cors } from "hono/cors";
 
 const app = new Hono();
 
@@ -12,7 +13,7 @@ const createReservationSchema = z.object({
     .datetime({ error: () => "日付形式が正しくありません" })
     .or(z.string().min(1, { message: "日付は必須です" })),
   note: z.string().optional(),
-  status: z.enum(["pending", "confirmed", "cancelled"]).optional(),
+  status: z.enum(["pending", "confirmed", "cancelled"]).optional(), //値がなくても自動的に"pending"が入る
 });
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
@@ -24,6 +25,15 @@ type Reservation = {
   note?: string;
   status: ReservationStatus;
 };
+
+app.use(
+  "*",
+  cors({
+    origin: "http://localhost:3000",
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    allowHeaders: ["Content-Type"],
+  })
+);
 
 app.get("/", (c) => {
   return c.text("Hello Hono!");
@@ -38,7 +48,6 @@ app.get("/reservations", async (c) => {
     const reservations = await prisma.reservation.findMany({
       orderBy: { date: "asc" },
     });
-
     return c.json(reservations);
   } catch (e) {
     console.error("Error fetching reservation:", e);
@@ -66,8 +75,8 @@ app.post("/reservations", async (c) => {
         date: new Date(date),
         note: note ?? null,
         status: status ?? "pending",
-      }
-    })
+      },
+    });
 
     return c.json(created, 200);
   } catch (e) {
