@@ -48,8 +48,38 @@ app.get("/health", (c) => {
 
 app.get("/reservations", async (c) => {
   try {
+    const q = c.req.query("q")?.trim();
+    const sort = c.req.query("sort") ?? "date_asc";
+    const where: Prisma.ReservationWhereInput = {};
+
+    if (q && q !== "") {
+      where.OR = [
+        {
+          name: {
+            contains: q,
+            mode: "insensitive",
+          },
+        },
+        {
+          note: {
+            contains: q,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    let orderBy: Prisma.ReservationOrderByWithRelationInput = {
+      date: "asc",
+    };
+
+    if (sort === "date_desc") {
+      orderBy = { date: "desc" };
+    }
+
     const reservations = await prisma.reservation.findMany({
-      orderBy: { date: "asc" },
+      where,
+      orderBy,
     });
     return c.json(reservations);
   } catch (e) {

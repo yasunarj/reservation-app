@@ -110,3 +110,4 @@ const ReservationsList = ({ initialReservation }: Props) => {
 };
 
 export default ReservationsList;
+
