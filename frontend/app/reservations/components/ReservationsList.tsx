@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -78,22 +79,29 @@ const ReservationsList = ({ initialReservation }: Props) => {
           {r.note && (
             <p className="text-sm text-gray-700 mb-1">メモ: {r.note}</p>
           )}
-          <div>
-            <p
+          <div className="mt-1 flex items-center justify-between">
+            <span
               className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 STATUS_CLASS[r.status]
               }`}
             >
               ステータス: {STATUS_LABEL[r.status]}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => handleDelete(r.id)}
-              className="text-xs text-red-600 hover:underline"
-            >
-              削除
-            </button>
+            </span>
+            <div className="flex items-center gap-3 text-xs">
+              <Link
+                href={`/reservations/${r.id}/edit`}
+                className="text-blue-600 hover:underline"
+              >
+                編集
+              </Link>
+              <button
+                type="button"
+                onClick={() => handleDelete(r.id)}
+                className="text-xs text-red-600 hover:underline"
+              >
+                削除
+              </button>
+            </div>
           </div>
         </li>
       ))}
