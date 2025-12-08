@@ -50,6 +50,13 @@ app.get("/reservations", async (c) => {
   try {
     const q = c.req.query("q")?.trim();
     const sort = c.req.query("sort") ?? "date_asc";
+
+    const pageParam = c.req.query("page");
+    const perPageParam = c.req.query("perPage");
+
+    const page = pageParam ? Math.max(Number(pageParam), 1) : 1;
+    const perPage = perPageParam ? Math.max(Number(perPageParam), 1) : 10;
+
     const where: Prisma.ReservationWhereInput = {};
 
     if (q && q !== "") {
@@ -77,11 +84,22 @@ app.get("/reservations", async (c) => {
       orderBy = { date: "desc" };
     }
 
+    const totalCount = await prisma.reservation.count({ where });
+
     const reservations = await prisma.reservation.findMany({
       where,
       orderBy,
+      skip: (page - 1) * perPage,
+      take: perPage,
     });
-    return c.json(reservations);
+    
+    return c.json({
+      items: reservations,
+      totalCount,
+      page,
+      perPage,
+      totalPages: Math.ceil(totalCount / perPage),
+    });
   } catch (e) {
     console.error("Error fetching reservation:", e);
     return c.json({ error: "Failed to fetch reservations" }, 500);

@@ -11,6 +11,14 @@ type Reservation = {
   status: ReservationStatus;
 };
 
+type ReservationResponse = {
+  items: Reservation[];
+  totalCount: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
@@ -23,11 +31,13 @@ const fetchReservations = async () => {
     throw new Error("予約一覧の取得に失敗しました");
   }
 
-  return res.json();
+  const data: ReservationResponse = await res.json();
+
+  return data;
 };
 
 const ReservationsPage = async () => {
-  const reservations = await fetchReservations();
+  const data = await fetchReservations();
 
   return (
     <main className="min-h-screen bg-gray-50 py-10 text-black">
@@ -37,7 +47,7 @@ const ReservationsPage = async () => {
           <Link href="/reservations/new">+ 新規予約を作成</Link>
         </div>
 
-        <ReservationsList initialReservation={reservations} />
+        <ReservationsList initialData={data} />
       </div>
     </main>
   );

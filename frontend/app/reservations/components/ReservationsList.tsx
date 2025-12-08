@@ -10,8 +10,16 @@ type Reservation = {
   id: number;
   name: string;
   date: string;
-  note?: string;
+  note: string | null;
   status: ReservationStatus;
+};
+
+type ReservationResponse = {
+  items: Reservation[];
+  totalCount: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
 };
 
 const STATUS_LABEL: Record<ReservationStatus, string> = {
@@ -30,11 +38,12 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
 type Props = {
-  initialReservation: Reservation[];
+  initialData: ReservationResponse;
 };
 
-const ReservationsList = ({ initialReservation }: Props) => {
-  const [reservations, setReservations] = useState(initialReservation);
+const ReservationsList = ({ initialData }: Props) => {
+  const [data, setData] = useState<ReservationResponse>(initialData);
+  const reservations = data.items;
   const [isPending, startTransition] = useTransition();
 
   const [keyword, setKeyword] = useState<string>("");
@@ -57,9 +66,11 @@ const ReservationsList = ({ initialReservation }: Props) => {
       }
 
       startTransition(() => {
-        setReservations((prev: Reservation[]) =>
-          prev.filter((r) => r.id !== id)
-        );
+        setData((prev) => ({
+          ...prev,
+          totalCount: prev.totalCount - 1,
+          items: prev.items.filter((r) => r.id !== id),
+        }));
       });
     } catch (e) {
       console.error(e);
@@ -79,6 +90,8 @@ const ReservationsList = ({ initialReservation }: Props) => {
       }
 
       params.set("sort", sort);
+      params.set("page", "1");
+      params.set("perPage", String(data.perPage));
 
       const res = await fetch(
         `${API_BASE_URL}/reservations?${params.toString()}`
@@ -91,8 +104,8 @@ const ReservationsList = ({ initialReservation }: Props) => {
         return;
       }
 
-      const data: Reservation[] = await res.json();
-      setReservations(data);
+      const nextData: ReservationResponse = await res.json();
+      setData(nextData);
     } catch (e) {
       console.error(e);
       alert("通信エラーが発生しました");
@@ -106,13 +119,17 @@ const ReservationsList = ({ initialReservation }: Props) => {
     setSort("date_asc");
     setIsSearching(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/reservations`);
+      const params = new URLSearchParams();
+      params.set("page", "1");
+      params.set("perPage", String(data.perPage));
+
+      const res = await fetch(`${API_BASE_URL}/reservations?${params.toString()}`);
       if (!res.ok) {
         alert("一覧の取得に失敗しました");
         return;
       }
-      const data: Reservation[] = await res.json();
-      setReservations(data);
+      const nextData: ReservationResponse = await res.json();
+      setData(nextData);
     } catch (e) {
       console.error(e);
       alert("通信エラーが発生しました。");
@@ -198,3 +215,6 @@ const ReservationsList = ({ initialReservation }: Props) => {
 };
 
 export default ReservationsList;
+
+// apiにページネーションを追加しました。pageとperPageとtotalCountを追加して、今度はUIに反映させましょう。
+// paramsにpageとperPageをセットしてapiに送るように実装、あとはnextとprevボタンをUIに反映させてhandlePageChangeを作成してapiへデータを取得し直すようにする。
