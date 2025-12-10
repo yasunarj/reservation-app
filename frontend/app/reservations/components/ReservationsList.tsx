@@ -123,7 +123,9 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("page", "1");
       params.set("perPage", String(data.perPage));
 
-      const res = await fetch(`${API_BASE_URL}/reservations?${params.toString()}`);
+      const res = await fetch(
+        `${API_BASE_URL}/reservations?${params.toString()}`
+      );
       if (!res.ok) {
         alert("一覧の取得に失敗しました");
         return;
@@ -133,6 +135,39 @@ const ReservationsList = ({ initialData }: Props) => {
     } catch (e) {
       console.error(e);
       alert("通信エラーが発生しました。");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handlePageChange = async (newPage: number) => {
+    if (newPage < 1 || newPage > data.totalPages) return;
+
+    setIsSearching(true);
+    try {
+      const params = new URLSearchParams();
+
+      if (keyword.trim() !== "") {
+        params.set("q", keyword);
+      }
+      params.set("sort", sort);
+      params.set("page", String(newPage));
+      params.set("perPage", String(data.perPage));
+
+      const res = await fetch(
+        `${API_BASE_URL}/reservations?${params.toString()}`
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        console.error("Failed to fetch page", error);
+        alert(error?.error ?? "ページの取得に失敗しました");
+      }
+
+      const nextData: ReservationResponse = await res.json();
+      setData(nextData);
+    } catch (e) {
+      console.error(e);
+      alert("通信エラーが発生しました");
     } finally {
       setIsSearching(false);
     }
@@ -154,6 +189,9 @@ const ReservationsList = ({ initialData }: Props) => {
       </div>
     );
   }
+
+  const startIndex = (data.page - 1) * data.perPage + 1;
+  const endIndex = Math.min(data.page * data.perPage, data.totalCount);
 
   return (
     <div
@@ -210,11 +248,36 @@ const ReservationsList = ({ initialData }: Props) => {
           </li>
         ))}
       </ul>
+
+      <div className="mt-4 flex items-center justify-between text-xs text-gray-600">
+        <span>
+          全 {data.totalCount} 件中 {startIndex}〜{endIndex} 件を表示
+        </span>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handlePageChange(data.page - 1)}
+            disabled={isSearching || data.page <= 1}
+            className="px-2 py-1 border rounded disabled:opacity-50 cursor-pointer"
+          >
+            前へ
+          </button>
+          <span>{data.page}/{data.totalPages}</span>
+          <button
+            type="button"
+            onClick={() => handlePageChange(data.page + 1)}
+            disabled={isSearching || data.page >= data.totalPages}
+            className="px-2 py-1 border rounded disabled:opacity-50 cursor-pointer"
+          >次へ</button>
+        </div>
+      </div>
     </div>
   );
 };
 
 export default ReservationsList;
 
-// apiにページネーションを追加しました。pageとperPageとtotalCountを追加して、今度はUIに反映させましょう。
-// paramsにpageとperPageをセットしてapiに送るように実装、あとはnextとprevボタンをUIに反映させてhandlePageChangeを作成してapiへデータを取得し直すようにする。
+
+// UIの作成も終わりました。今回はNextとprevボタンの作成とボタンを押した時にpage,perPage,q,sortを含めたparams入りのfetch関数を作成しました。
+// 特に混乱したのはpage数の表示やtotalCountの表示スキップした時に何番目からindexを表示するか。その方法で混乱しましたが腑に落ちました。
