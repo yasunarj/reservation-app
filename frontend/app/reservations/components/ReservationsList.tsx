@@ -277,7 +277,3 @@ const ReservationsList = ({ initialData }: Props) => {
 };
 
 export default ReservationsList;
-
-
-// UIの作成も終わりました。今回はNextとprevボタンの作成とボタンを押した時にpage,perPage,q,sortを含めたparams入りのfetch関数を作成しました。
-// 特に混乱したのはpage数の表示やtotalCountの表示スキップした時に何番目からindexを表示するか。その方法で混乱しましたが腑に落ちました。
