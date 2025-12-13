@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { reservationRoute } from "./routes/reservations.js";
 import { authRoute } from "./routes/auth.js";
-import { workerData } from "worker_threads";
 
 const app = new Hono();
 
@@ -36,8 +35,3 @@ serve(
     console.log(`Server is running on http://localhost:${info.port}`);
   }
 );
-
-// ログイン時に入力された情報をもとにDBからユーザーデータを取得してemailとpasswordがあっているか確認して、問題なければtokenを作成する"/auth/login"を作成。
-// 作成されたtokenを毎回secretKeyで署名されているか確認をするための"/auth/me"を作成。
-// ある程度は理解できたが、最終的にはフロント側と合わせて理解する必要があります。フロントが終わった時点で時系列でどのような流れになっているかをからなず確認をするように
-// とりあえず次はログインフォームを作成するところから始めよう
