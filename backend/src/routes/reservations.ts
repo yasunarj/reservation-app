@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma.js";
+import { authMiddleware } from "../middleware/auth.js";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -24,6 +25,8 @@ const createReservationSchema = baseReservationSchema;
 const updateReservationSchema = baseReservationSchema.partial();
 
 export const reservationRoute = new Hono();
+
+reservationRoute.use("*", authMiddleware);
 
 reservationRoute.get("/", async (c) => {
   try {

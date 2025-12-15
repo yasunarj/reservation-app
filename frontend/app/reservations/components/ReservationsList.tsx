@@ -3,6 +3,8 @@
 import { useState, useTransition, FormEvent } from "react";
 import Link from "next/link";
 import SearchForm from "./SearchForm";
+import { apiFetch, ApiError } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -34,14 +36,13 @@ const STATUS_CLASS: Record<ReservationStatus, string> = {
   cancelled: "bg-red-100 text-red-800 border border-red-200",
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
-
 type Props = {
   initialData: ReservationResponse;
 };
 
 const ReservationsList = ({ initialData }: Props) => {
+  const router = useRouter();
+
   const [data, setData] = useState<ReservationResponse>(initialData);
   const reservations = data.items;
   const [isPending, startTransition] = useTransition();
@@ -50,20 +51,21 @@ const ReservationsList = ({ initialData }: Props) => {
   const [sort, setSort] = useState<"date_asc" | "date_desc">("date_asc");
   const [isSearching, setIsSearching] = useState<boolean>(false);
 
+  const handleApiError = (e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) {
+      alert("ログインが必要です");
+      router.push("/login");
+      return true;
+    }
+    return false;
+  };
+
   const handleDelete = async (id: number) => {
     const ok = confirm("この予約を削除してもよろしいですか？");
     if (!ok) return;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/reservations/${id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        console.error("Failed to delete reservation", data);
-        alert(data?.error ?? "削除に失敗しました");
-        return;
-      }
+      await apiFetch(`/reservations/${id}`, { method: "DELETE" });
 
       startTransition(() => {
         setData((prev) => ({
@@ -73,8 +75,11 @@ const ReservationsList = ({ initialData }: Props) => {
         }));
       });
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
-      alert("通信中にエラーが発生しました。");
+      alert(
+        e instanceof ApiError ? e.message : "通信中にエラーが発生しました。"
+      );
     }
   };
 
@@ -93,20 +98,12 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("page", "1");
       params.set("perPage", String(data.perPage));
 
-      const res = await fetch(
-        `${API_BASE_URL}/reservations?${params.toString()}`
+      const nextData = await apiFetch<ReservationResponse>(
+        `/reservations?${params.toString()}`
       );
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        console.error("Failed to search reservations", data);
-        alert(data?.error ?? "検索に失敗しました");
-        return;
-      }
-
-      const nextData: ReservationResponse = await res.json();
       setData(nextData);
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
       alert("通信エラーが発生しました");
     } finally {
@@ -123,18 +120,15 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("page", "1");
       params.set("perPage", String(data.perPage));
 
-      const res = await fetch(
-        `${API_BASE_URL}/reservations?${params.toString()}`
+      const nextData = await apiFetch<ReservationResponse>(
+        `/reservations?${params.toString()}`
       );
-      if (!res.ok) {
-        alert("一覧の取得に失敗しました");
-        return;
-      }
-      const nextData: ReservationResponse = await res.json();
+
       setData(nextData);
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
-      alert("通信エラーが発生しました。");
+      alert(e instanceof ApiError ? e.message : "通信エラーが発生しました。");
     } finally {
       setIsSearching(false);
     }
@@ -154,20 +148,14 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("page", String(newPage));
       params.set("perPage", String(data.perPage));
 
-      const res = await fetch(
-        `${API_BASE_URL}/reservations?${params.toString()}`
+      const nextData = await apiFetch<ReservationResponse>(
+        `/reservations?${params.toString()}`
       );
-      if (!res.ok) {
-        const error = await res.json().catch(() => null);
-        console.error("Failed to fetch page", error);
-        alert(error?.error ?? "ページの取得に失敗しました");
-      }
-
-      const nextData: ReservationResponse = await res.json();
       setData(nextData);
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
-      alert("通信エラーが発生しました");
+      alert(e instanceof ApiError ? e.message : "通信エラーが発生しました");
     } finally {
       setIsSearching(false);
     }
@@ -263,13 +251,17 @@ const ReservationsList = ({ initialData }: Props) => {
           >
             前へ
           </button>
-          <span>{data.page}/{data.totalPages}</span>
+          <span>
+            {data.page}/{data.totalPages}
+          </span>
           <button
             type="button"
             onClick={() => handlePageChange(data.page + 1)}
             disabled={isSearching || data.page >= data.totalPages}
             className="px-2 py-1 border rounded disabled:opacity-50 cursor-pointer"
-          >次へ</button>
+          >
+            次へ
+          </button>
         </div>
       </div>
     </div>

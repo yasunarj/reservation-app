@@ -2,6 +2,8 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { getAuthToken } from "@/lib/auth";
+import { useCallback } from "react";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -9,8 +11,15 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
 const NewReservationPage = () => {
-  const router = useRouter();
+  const buildHeaders = useCallback(() => {
+    const token = getAuthToken();
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    return headers;
+  }, []);
 
+  const router = useRouter();
   const [name, setName] = useState<string>("");
   const [date, setDate] = useState<string>("");
   const [note, setNote] = useState<string>("");
@@ -40,9 +49,7 @@ const NewReservationPage = () => {
 
       const res = await fetch(`${API_BASE_URL}/reservations`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({
           name,
           date: isoDate,
@@ -51,6 +58,11 @@ const NewReservationPage = () => {
         }),
       });
 
+      if(res.status === 401) {
+        alert("ログインが必要です")
+        router.push("/login");
+      }
+      
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         console.error("Failed to create reservation", data);
@@ -164,6 +176,3 @@ const NewReservationPage = () => {
 };
 
 export default NewReservationPage;
-
-
-

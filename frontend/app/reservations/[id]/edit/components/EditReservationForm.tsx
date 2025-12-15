@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { getAuthToken } from "@/lib/auth";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -21,6 +22,13 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
 const EditReservationForm = ({ reservation }: Props) => {
+  const buildingToken = () => {
+    const token = getAuthToken();
+    const headers = new Headers();
+    headers.set("Content-Type", "application/json");
+    if(token) headers.set("Authorization", `Bearer ${token}`);
+    return headers;
+  };
   const router = useRouter();
 
   const toLocalDateTimeInputValue = (iso: string) => {
@@ -34,7 +42,7 @@ const EditReservationForm = ({ reservation }: Props) => {
     const minutes = pad(d.getMinutes());
 
     return `${year}-${month}-${day}T${hours}:${minutes}`;
-  }
+  };
 
   const initialDateTimeLocal = toLocalDateTimeInputValue(reservation.date);
   console.log(initialDateTimeLocal);
@@ -66,18 +74,19 @@ const EditReservationForm = ({ reservation }: Props) => {
     try {
       const isoDate = new Date(date).toISOString();
 
-      const res = await fetch(`${API_BASE_URL}/reservations/${reservation.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name,
-          date: isoDate,
-          note,
-          status,
-        }),
-      });
+      const res = await fetch(
+        `${API_BASE_URL}/reservations/${reservation.id}`,
+        {
+          method: "PATCH",
+          headers: buildingToken(),
+          body: JSON.stringify({
+            name,
+            date: isoDate,
+            note,
+            status,
+          }),
+        }
+      );
 
       const data = await res.json().catch(() => null);
 
