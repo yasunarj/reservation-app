@@ -2,7 +2,8 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { getAuthToken } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -18,18 +19,9 @@ type Props = {
   reservation: Reservation;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
-
 const EditReservationForm = ({ reservation }: Props) => {
-  const buildingToken = () => {
-    const token = getAuthToken();
-    const headers = new Headers();
-    headers.set("Content-Type", "application/json");
-    if(token) headers.set("Authorization", `Bearer ${token}`);
-    return headers;
-  };
   const router = useRouter();
+  const { handleApiError, toMessage } = useApi();
 
   const toLocalDateTimeInputValue = (iso: string) => {
     const d = new Date(iso);
@@ -74,35 +66,21 @@ const EditReservationForm = ({ reservation }: Props) => {
     try {
       const isoDate = new Date(date).toISOString();
 
-      const res = await fetch(
-        `${API_BASE_URL}/reservations/${reservation.id}`,
-        {
-          method: "PATCH",
-          headers: buildingToken(),
-          body: JSON.stringify({
-            name,
-            date: isoDate,
-            note,
-            status,
-          }),
-        }
-      );
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        console.error("Failed to update reservation", data);
-        setErrorMessage(
-          data?.error ??
-            "予約の更新に失敗しました。時間をおいて再度お試しください。"
-        );
-        return;
-      }
+      await apiFetch(`/reservations/${reservation.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          date: isoDate,
+          note: note.trim() ? note.trim() : undefined,
+          status,
+        }),
+      });
 
       router.push("/reservations");
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
-      setErrorMessage("通信エラーが発生しました。");
+      setErrorMessage(toMessage(e));
     } finally {
       setIsSubmitting(false);
     }

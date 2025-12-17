@@ -1,25 +1,15 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { apiFetch } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import { useRouter } from "next/navigation";
-import { getAuthToken } from "@/lib/auth";
-import { useCallback } from "react";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
-
 const NewReservationPage = () => {
-  const buildHeaders = useCallback(() => {
-    const token = getAuthToken();
-    const headers = new Headers();
-    headers.set("Content-Type", "application/json");
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    return headers;
-  }, []);
-
   const router = useRouter();
+  const { handleApiError, toMessage } = useApi();
   const [name, setName] = useState<string>("");
   const [date, setDate] = useState<string>("");
   const [note, setNote] = useState<string>("");
@@ -47,35 +37,21 @@ const NewReservationPage = () => {
     try {
       const isoDate = new Date(date).toISOString();
 
-      const res = await fetch(`${API_BASE_URL}/reservations`, {
+      await apiFetch(`/reservations`, {
         method: "POST",
-        headers: buildHeaders(),
         body: JSON.stringify({
           name,
           date: isoDate,
-          note: note.trim() ? note : undefined,
+          note: note.trim() ? note.trim() : undefined,
           status,
         }),
       });
 
-      if(res.status === 401) {
-        alert("ログインが必要です")
-        router.push("/login");
-      }
-      
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        console.error("Failed to create reservation", data);
-        setErrorMessage(
-          data?.error ??
-            "予約の作成に失敗しました。時間をおいて再度お試しください。"
-        );
-        return;
-      }
       router.push("/reservations");
     } catch (e) {
+      if (handleApiError(e)) return;
       console.error(e);
-      setErrorMessage("通信エラーが発生しました");
+      setErrorMessage(toMessage(e));
     } finally {
       setIsSubmitting(false);
     }

@@ -3,8 +3,8 @@
 import { useState, useTransition, FormEvent } from "react";
 import Link from "next/link";
 import SearchForm from "./SearchForm";
-import { apiFetch, ApiError } from "@/lib/api";
-import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -41,7 +41,7 @@ type Props = {
 };
 
 const ReservationsList = ({ initialData }: Props) => {
-  const router = useRouter();
+  const { handleApiError } = useApi();
 
   const [data, setData] = useState<ReservationResponse>(initialData);
   const reservations = data.items;
@@ -50,15 +50,6 @@ const ReservationsList = ({ initialData }: Props) => {
   const [keyword, setKeyword] = useState<string>("");
   const [sort, setSort] = useState<"date_asc" | "date_desc">("date_asc");
   const [isSearching, setIsSearching] = useState<boolean>(false);
-
-  const handleApiError = (e: unknown) => {
-    if (e instanceof ApiError && e.status === 401) {
-      alert("ログインが必要です");
-      router.push("/login");
-      return true;
-    }
-    return false;
-  };
 
   const handleDelete = async (id: number) => {
     const ok = confirm("この予約を削除してもよろしいですか？");
@@ -77,9 +68,6 @@ const ReservationsList = ({ initialData }: Props) => {
     } catch (e) {
       if (handleApiError(e)) return;
       console.error(e);
-      alert(
-        e instanceof ApiError ? e.message : "通信中にエラーが発生しました。"
-      );
     }
   };
 
@@ -105,7 +93,6 @@ const ReservationsList = ({ initialData }: Props) => {
     } catch (e) {
       if (handleApiError(e)) return;
       console.error(e);
-      alert("通信エラーが発生しました");
     } finally {
       setIsSearching(false);
     }
@@ -128,7 +115,6 @@ const ReservationsList = ({ initialData }: Props) => {
     } catch (e) {
       if (handleApiError(e)) return;
       console.error(e);
-      alert(e instanceof ApiError ? e.message : "通信エラーが発生しました。");
     } finally {
       setIsSearching(false);
     }
@@ -142,7 +128,7 @@ const ReservationsList = ({ initialData }: Props) => {
       const params = new URLSearchParams();
 
       if (keyword.trim() !== "") {
-        params.set("q", keyword);
+        params.set("q", keyword.trim());
       }
       params.set("sort", sort);
       params.set("page", String(newPage));
@@ -155,7 +141,6 @@ const ReservationsList = ({ initialData }: Props) => {
     } catch (e) {
       if (handleApiError(e)) return;
       console.error(e);
-      alert(e instanceof ApiError ? e.message : "通信エラーが発生しました");
     } finally {
       setIsSearching(false);
     }

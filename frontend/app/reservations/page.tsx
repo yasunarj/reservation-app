@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import ReservationsList from "./components/ReservationsList";
-import { useRouter } from "next/navigation";
-import { apiFetch, ApiError } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -25,19 +25,9 @@ type ReservationResponse = {
 };
 
 const ReservationsPage = () => {
-  const router = useRouter();
+  const { handleApiError } = useApi();
   const [data, setData] = useState<ReservationResponse | null>(null);
   const [loading, setLoading] = useState(true);
-
-  const handleApiError = useCallback((e: unknown) => {
-    if (e instanceof ApiError && e.status === 401) {
-      alert("ログインが必要です");
-      router.push("/login");
-      setLoading(false);
-      return true;
-    }
-    return false;
-  }, [router]);
 
   useEffect(() => {
     const run = async () => {
@@ -47,14 +37,13 @@ const ReservationsPage = () => {
       } catch (e) {
         if (handleApiError(e)) return;
         console.error(e);
-        alert("通信中にエラーが発生しました");
       } finally {
         setLoading(false);
       }
     };
 
     run();
-  }, [router, handleApiError]);
+  }, [handleApiError]);
 
   if (loading) {
     return <p className="p-6">読み込み中...</p>;
@@ -80,7 +69,3 @@ const ReservationsPage = () => {
 };
 
 export default ReservationsPage;
-
-// 作成した共通関数である、lib/api.tsのフロント側に展開している途中です。
-// reservationsの取得ページとreservationListには設定が完了、他のページも見ていき
-// 終わったらCookieの導入に進みましょう。

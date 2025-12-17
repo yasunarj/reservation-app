@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getAuthToken } from "@/lib/auth";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { apiFetch } from "@/lib/api";
+import { useApi } from "@/lib/useApi";
 import EditReservationForm from "./components/EditReservationForm";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
@@ -15,11 +16,8 @@ type Reservation = {
   status: ReservationStatus;
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
-
 const EditReservationPage = () => {
-  const router = useRouter();
+  const { handleApiError, toMessage } = useApi();
   const params = useParams<{ id: string }>();
   const idParams = params?.id;
   const [data, setData] = useState<Reservation | null>(null);
@@ -33,53 +31,28 @@ const EditReservationPage = () => {
       try {
         if (!idParams) {
           setErrorMessage("idが取得できませんでした");
-          setLoading(false);
           return;
         }
 
         const postId = Number(idParams);
         if (Number.isNaN(postId)) {
           setErrorMessage("idが不正です");
-          setLoading(false);
           return;
         }
 
-        const token = getAuthToken();
-        if (!token) {
-          router.push("/login");
-          setLoading(false);
-          return;
-        }
+        const data = await apiFetch<Reservation>(`/reservations/${postId}`);
 
-        const headers = new Headers();
-        headers.set("Authorization", `Bearer ${token}`);
-
-        const res = await fetch(`${API_BASE_URL}/reservations/${postId}`, {
-          headers,
-        });
-
-        if (res.status === 401) {
-          router.push("/login");
-          setLoading(false);
-          return;
-        }
-
-        if (!res.ok) {
-          setErrorMessage("データの取得に失敗しました");
-          setLoading(false);
-          return;
-        }
-
-        setData(await res.json());
+        setData(data);
       } catch (e) {
-        console.error("通信エラーが発生しました", e);
-        setErrorMessage("通信エラーが発生しました");
+        if (handleApiError(e)) return;
+        console.error(e);
+        setErrorMessage(toMessage(e));
       } finally {
         setLoading(false);
       }
     };
     run();
-  }, [idParams, router]);
+  }, [handleApiError, toMessage, idParams]);
 
   if (loading) {
     return <p>読み込み中...</p>;
@@ -104,4 +77,3 @@ const EditReservationPage = () => {
 };
 
 export default EditReservationPage;
-
