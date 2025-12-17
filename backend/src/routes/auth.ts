@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { SignJWT, jwtVerify } from "jose";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 
 // バイト形式に変換する関数↓
 const getJwtSecretKey = () => {
@@ -56,9 +57,16 @@ authRoute.post("/login", async (c) => {
       .setExpirationTime("7d")
       .sign(secretKey);
 
+    setCookie(c, "authToken", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
     return c.json(
       {
-        token,
         user: {
           id: dummyUser.id,
           name: dummyUser.name,
@@ -73,17 +81,28 @@ authRoute.post("/login", async (c) => {
   }
 });
 
+authRoute.post("/logout", async (c) => {
+  deleteCookie(c, "authToken", { path: "/" });
+  return c.json({ ok: true }, 200);
+});
+
 authRoute.get("/me", async (c) => {
   try {
-    const authHeader = c.req.header("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
+    let token = getCookie(c, "authToken");
+
+    // ↓これはCookieに完全に移行するまではまだlocalStorageも使っていいよ！としているコード
+    if (!token) {
+      const authHeader = c.req.header("authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        token = authHeader.slice("Bearer ".length);
+      }
+    }
+
+    if (!token) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const token = authHeader.slice("Bearer ".length);
-    const secretKey = getJwtSecretKey();
-
-    const { payload } = await jwtVerify(token, secretKey);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
 
     return c.json(
       {
