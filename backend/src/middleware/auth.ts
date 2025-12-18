@@ -1,6 +1,6 @@
 import type { Context, Next } from "hono";
 import { jwtVerify } from "jose";
-import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie";
 
 const getJwtSecretKey = () => {
   const secret = process.env.JWT_SECRET;
@@ -9,16 +9,21 @@ const getJwtSecretKey = () => {
 };
 
 export const authMiddleware = async (c: Context, next: Next) => {
-  const authHeader = c.req.header("authorization");
+  let token = getCookie(c, "authToken");
 
-  if (!authHeader?.startsWith("Bearer ")) {
-    return c.json({ error: "Unauthrized" }, 401);
+  if (!token) {
+    const authHeader = c.req.header("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.slice("Bearer ".length);
+    }
   }
 
-  const token = authHeader.slice("Bearer ".length);
+  if (!token) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
 
   try {
-    const { payload } = await jwtVerify(token, getJwtSecretKey);
+    const { payload } = await jwtVerify(token, getJwtSecretKey());
 
     c.set("user", {
       id: payload.sub,
@@ -31,6 +36,3 @@ export const authMiddleware = async (c: Context, next: Next) => {
     return c.json({ error: "Invalid or expired token" }, 401);
   }
 };
-
-// localStorageからCookieに変更しましょう。auth.tsの方は変更が終わっているので続けてこのファイル(Middleware.ts)を変更してください。
-// ※cookieに保存するためのルールをもう一度見返してください。重要なところになるのでできれば自分で説明できるように内容を暗記するようにすると良いです。

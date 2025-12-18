@@ -2,9 +2,7 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
+import { apiFetch, ApiError } from "@/lib/api";
 
 const LoginPage = () => {
   const router = useRouter();
@@ -20,31 +18,20 @@ const LoginPage = () => {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        console.error("Login failed", data);
-        setErrorMessage(data?.error ?? "ログインに失敗しました");
-        return;
-      }
-
-      const { user, token } = data;
-
-      localStorage.setItem("authToken", token);
-      localStorage.setItem("authUser", JSON.stringify(user));
+      await apiFetch<{ user: { id: number; name: string; email: string } }>(
+        "/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        }
+      );
 
       router.push("/reservations");
     } catch (e) {
       console.error(e);
-      setErrorMessage("通信エラーが発生しました");
+      setErrorMessage(
+        e instanceof ApiError ? e.message : "通信エラーが発生しました"
+      );
     } finally {
       setIsSubmitting(false);
     }

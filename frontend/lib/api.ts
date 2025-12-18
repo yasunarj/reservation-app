@@ -1,5 +1,3 @@
-import { getAuthToken } from "./auth";
-
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
 
@@ -24,21 +22,20 @@ export const apiFetch = async <T>(
   path: string,
   init: RequestInit = {}
 ): Promise<T> => {
-  const token = getAuthToken();
   const headers = new Headers(init.headers);
 
-  if (init.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
+  // bodyがある時だけJSON扱いにする（FormDataの邪魔をしない）
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
 
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (init.body && !headers.has("Content-Type") && !isFormData) {
+    headers.set("Content-Type", "application/json");
   }
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
-    credentials: "include",
+    credentials: "include", // ★ Cookie送信の要
   });
 
   if (!res.ok) {
@@ -50,9 +47,7 @@ export const apiFetch = async <T>(
     throw new ApiError(msg, res.status, body);
   }
 
-  if (res.status === 204) {
-    return undefined as T;
-  }
+  if (res.status === 204) return undefined as T;
 
   return (await res.json()) as T;
 };

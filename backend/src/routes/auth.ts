@@ -59,7 +59,7 @@ authRoute.post("/login", async (c) => {
 
     setCookie(c, "authToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: false,
       sameSite: "Lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
@@ -119,3 +119,7 @@ authRoute.get("/me", async (c) => {
 });
 
 export { authRoute };
+// cookieへの変更を進めており、routes/auth.tsでcookieへの保存のコードを書き、middlewareの方も、cookieからtokenを取得するように変更。
+// フロント側ではログインページを編集localStorageへの保存をやめてpasswordとemailを送るだに変更。
+// 問題としてcookieへのtokenの保存はできているのにその後にreservationsでcookieが使用できず、原因としてサーバー側で設定していたsameSite: "None"とsecure: falseの組み合わせが問題であった。
+// sameSite: "Lax"としたことで問題解決したが、このあとチャットの解説とdevtoolでログイン時の状態をよく確認してください。
