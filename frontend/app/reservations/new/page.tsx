@@ -4,11 +4,13 @@ import { useState, FormEvent, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { useRouter } from "next/navigation";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
 const NewReservationPage = () => {
   const router = useRouter();
+  const { checking } = useRequireAuth();
   const onUnauthorized = useCallback(() => {
     router.push("/login");
   }, [router]);
@@ -59,6 +61,10 @@ const NewReservationPage = () => {
       setIsSubmitting(false);
     }
   };
+
+  if (checking) {
+    return <p>確認中...</p>;
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 py-10 text-black">
