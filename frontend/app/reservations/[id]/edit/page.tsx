@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
@@ -17,7 +18,12 @@ type Reservation = {
 };
 
 const EditReservationPage = () => {
-  const { handleApiError, toMessage } = useApi();
+  const router = useRouter();
+  const onUnauthorized = useCallback(() => {
+    router.push("/login");
+  }, [router]);
+
+  const { handleApiError, toMessage } = useApi(onUnauthorized);
   const params = useParams<{ id: string }>();
   const idParams = params?.id;
   const [data, setData] = useState<Reservation | null>(null);
@@ -52,7 +58,7 @@ const EditReservationPage = () => {
       }
     };
     run();
-  }, [handleApiError, toMessage, idParams]);
+  }, [handleApiError, idParams, toMessage]);
 
   if (loading) {
     return <p>読み込み中...</p>;

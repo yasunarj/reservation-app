@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useCallback } from "react";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,10 @@ type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
 const NewReservationPage = () => {
   const router = useRouter();
-  const { handleApiError, toMessage } = useApi();
+  const onUnauthorized = useCallback(() => {
+    router.push("/login");
+  }, [router]);
+  const { handleApiError, toMessage } = useApi(onUnauthorized);
   const [name, setName] = useState<string>("");
   const [date, setDate] = useState<string>("");
   const [note, setNote] = useState<string>("");

@@ -12,13 +12,6 @@ export const authMiddleware = async (c: Context, next: Next) => {
   let token = getCookie(c, "authToken");
 
   if (!token) {
-    const authHeader = c.req.header("authorization");
-    if (authHeader?.startsWith("Bearer ")) {
-      token = authHeader.slice("Bearer ".length);
-    }
-  }
-
-  if (!token) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 

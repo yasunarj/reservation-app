@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ReservationsList from "./components/ReservationsList";
+import LogoutButton from "./components/LogoutButton";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 
@@ -25,7 +27,12 @@ type ReservationResponse = {
 };
 
 const ReservationsPage = () => {
-  const { handleApiError } = useApi();
+  const router = useRouter();
+  const onUnauthorized = useCallback(() => {
+    router.push("/login");
+  }, [router]);
+
+  const { handleApiError } = useApi(onUnauthorized);
   const [data, setData] = useState<ReservationResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -58,7 +65,10 @@ const ReservationsPage = () => {
       <div className="max-w-3xl mx-auto px-4">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">予約一覧</h1>
-          <Link href="/reservations/new">+ 新規予約を作成</Link>
+          <div className="flex gap-4">
+            <Link href="/reservations/new">+ 新規予約を作成</Link>
+            <LogoutButton />
+          </div>
         </div>
 
         {/* ここでは data は必ず存在 */}

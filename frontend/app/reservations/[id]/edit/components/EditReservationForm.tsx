@@ -37,7 +37,6 @@ const EditReservationForm = ({ reservation }: Props) => {
   };
 
   const initialDateTimeLocal = toLocalDateTimeInputValue(reservation.date);
-  console.log(initialDateTimeLocal);
 
   const [name, setName] = useState<string>(reservation.name);
   const [date, setDate] = useState<string>(initialDateTimeLocal);

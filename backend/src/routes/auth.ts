@@ -90,14 +90,6 @@ authRoute.get("/me", async (c) => {
   try {
     let token = getCookie(c, "authToken");
 
-    // ↓これはCookieに完全に移行するまではまだlocalStorageも使っていいよ！としているコード
-    if (!token) {
-      const authHeader = c.req.header("authorization");
-      if (authHeader?.startsWith("Bearer ")) {
-        token = authHeader.slice("Bearer ".length);
-      }
-    }
-
     if (!token) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -119,7 +111,3 @@ authRoute.get("/me", async (c) => {
 });
 
 export { authRoute };
-// cookieへの変更を進めており、routes/auth.tsでcookieへの保存のコードを書き、middlewareの方も、cookieからtokenを取得するように変更。
-// フロント側ではログインページを編集localStorageへの保存をやめてpasswordとemailを送るだに変更。
-// 問題としてcookieへのtokenの保存はできているのにその後にreservationsでcookieが使用できず、原因としてサーバー側で設定していたsameSite: "None"とsecure: falseの組み合わせが問題であった。
-// sameSite: "Lax"としたことで問題解決したが、このあとチャットの解説とdevtoolでログイン時の状態をよく確認してください。
