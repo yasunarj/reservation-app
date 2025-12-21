@@ -1,31 +1,30 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { SignJWT, jwtVerify } from "jose";
+import { jwtVerify } from "jose";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-
-// バイト形式に変換する関数↓
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error("JWT_SECRET is not set");
-  }
-  return new TextEncoder().encode(secret);
-};
+import { supabase } from "../lib/supabase.js";
 
 const authRoute = new Hono();
 
-// ログイン用のスキーマを定義する
 const loginSchema = z.object({
   email: z.email("メールアドレスの形式が正しくありません"),
   password: z.string().min(4, "パスワードは４文字以上で入力してください"),
 });
 
-// ダミーユーザー
-const dummyUser = {
-  id: 1,
-  name: "Test User",
-  email: "test@example.com",
-  password: "password123",
+const supabaseUrl = process.env.SUPABASE_URL!;
+const issuer = `${supabaseUrl}/auth/v1`;
+
+const getSupabaseJwtSecretKey = () => {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) throw new Error("SUPABASE_JWT_SECRET is not set");
+  return new TextEncoder().encode(secret);
+};
+
+const cookieBaseOptions = {
+  httpOnly: true,
+  secure: false,
+  sameSite: "Lax" as const,
+  path: "/",
 };
 
 authRoute.post("/login", async (c) => {
@@ -41,36 +40,41 @@ authRoute.post("/login", async (c) => {
 
     const { email, password } = parsed.data;
 
-    if (email !== dummyUser.email || password !== dummyUser.password) {
-      return c.json({ error: "メールアドレスまたはパスワードが違います" }, 401);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error || !data.session) {
+      return c.json({ error: error?.message ?? "ログインに失敗しました" }, 401);
     }
 
-    const secretKey = getJwtSecretKey();
+    const accessToken = data.session.access_token;
+    const refreshToken = data.session.refresh_token;
 
-    const token = await new SignJWT({
-      sub: String(dummyUser.id),
-      email: dummyUser.email,
-      name: dummyUser.name,
-    })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(secretKey);
-
-    setCookie(c, "authToken", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+    setCookie(c, "authToken", accessToken, {
+      ...cookieBaseOptions,
+      maxAge: 60 * 60 * 2, // ←おすすめ（2時間）
     });
+
+    setCookie(c, "refreshToken", refreshToken, {
+      ...cookieBaseOptions,
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    const { payload } = await jwtVerify(
+      accessToken,
+      getSupabaseJwtSecretKey(),
+      { issuer }
+    );
+    const p = payload as any;
 
     return c.json(
       {
         user: {
-          id: dummyUser.id,
-          name: dummyUser.name,
-          email: dummyUser.email,
+          id: p.sub,
+          email: p.email ?? null,
+          name: p.user_metadata?.name ?? p.email ?? null,
         },
       },
       200
@@ -83,30 +87,65 @@ authRoute.post("/login", async (c) => {
 
 authRoute.post("/logout", async (c) => {
   deleteCookie(c, "authToken", { path: "/" });
+  deleteCookie(c, "refreshToken", { path: "/" });
   return c.json({ ok: true }, 200);
+});
+
+authRoute.post("/refresh", async (c) => {
+  try {
+    const refreshToken = getCookie(c, "refreshToken");
+    if (!refreshToken) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
+
+    if (error || !data.session) {
+      return c.json({ error: error?.message ?? "Failed to refresh" }, 401);
+    }
+
+    setCookie(c, "authToken", data.session.access_token, {
+      ...cookieBaseOptions,
+      maxAge: 60 * 60 * 2,
+    });
+
+    setCookie(c, "refreshToken", data.session.refresh_token, {
+      ...cookieBaseOptions,
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    return c.json({ ok: true }, 200);
+  } catch (e) {
+    console.error("Error in /auth/refresh:", e);
+    return c.json({ error: "Failed to refresh" }, 500);
+  }
 });
 
 authRoute.get("/me", async (c) => {
   try {
-    let token = getCookie(c, "authToken");
-
+    const token = getCookie(c, "authToken");
     if (!token) {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const { payload } = await jwtVerify(token, getJwtSecretKey());
+    const { payload } = await jwtVerify(token, getSupabaseJwtSecretKey(), {
+      issuer, algorithms: ["HS256"]
+    });
+    const p = payload as any;
 
     return c.json(
       {
-        id: payload.sub,
-        email: payload.email,
-        name: payload.name,
+        id: p.sub,
+        email: p.email ?? null,
+        name: p.user_metadata?.name ?? p.email ?? null,
       },
       200
     );
   } catch (e) {
-    console.error("Error in /auth/me:", e);
-    return c.json({ error: "Invalid or expired token" }, 401);
+    console.error("Error in authMiddleware:", e);
+    return c.json({ error: "ME_INVALID_TOKEN" }, 401);
   }
 });
 

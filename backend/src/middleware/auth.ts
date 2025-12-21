@@ -2,30 +2,35 @@ import type { Context, Next } from "hono";
 import { jwtVerify } from "jose";
 import { getCookie } from "hono/cookie";
 
-const getJwtSecretKey = () => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error("JWT_SECRET is not set");
-  return new TextEncoder().encode(secret);
+const supabaseUrl = process.env.SUPABASE_URL!;
+const issuer = `${supabaseUrl}/auth/v1`;
+
+const getSupabaseJwtSecretKey = () => {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) throw new Error("SUPABASE_JWT_SECRET is not set");
+  return new TextEncoder().encode(secret.trim());
 };
 
 export const authMiddleware = async (c: Context, next: Next) => {
-  let token = getCookie(c, "authToken");
-
+  const token = getCookie(c, "authToken");
   if (!token) {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
   try {
-    const { payload } = await jwtVerify(token, getJwtSecretKey());
+    const { payload } = await jwtVerify(token, getSupabaseJwtSecretKey(), {
+      issuer
+    });
 
     c.set("user", {
       id: payload.sub,
-      email: payload.email,
-      name: payload.name,
+      email: payload.email ?? null,
+      name: (payload as any).user_metadata?.name ?? payload.email ?? null,
     });
 
     await next();
   } catch (e) {
-    return c.json({ error: "Invalid or expired token" }, 401);
+    console.error("Error in authMiddleware:", e);
+    return c.json({ error: "MW_INVALID_TOKEN" }, 401);
   }
 };
