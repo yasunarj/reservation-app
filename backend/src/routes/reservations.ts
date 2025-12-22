@@ -30,6 +30,7 @@ reservationRoute.use("*", authMiddleware);
 
 reservationRoute.get("/", async (c) => {
   try {
+    const user = c.get("user");
     const q = c.req.query("q")?.trim();
     const sort = c.req.query("sort") ?? "date_asc";
 
@@ -39,31 +40,24 @@ reservationRoute.get("/", async (c) => {
     const page = pageParam ? Math.max(Number(pageParam), 1) : 1;
     const perPage = perPageParam ? Math.max(Number(perPageParam), 1) : 10;
 
-    const where: Prisma.ReservationWhereInput = {};
-
-    if (q && q !== "") {
-      where.OR = [
-        {
-          name: {
-            contains: q,
-            mode: "insensitive",
-          },
-        },
-        {
-          note: {
-            contains: q,
-            mode: "insensitive",
-          },
-        },
-      ];
-    }
+    const where: Prisma.ReservationWhereInput = {
+      userId: user.id,
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { note: { contains: q, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    };
 
     let orderBy: Prisma.ReservationOrderByWithRelationInput = {
       date: "asc",
     };
 
-    if(sort === "date_desc") {
-      orderBy = {date: "desc"}
+    if (sort === "date_desc") {
+      orderBy = { date: "desc" };
     }
 
     const totalCount = await prisma.reservation.count({ where });
@@ -90,6 +84,7 @@ reservationRoute.get("/", async (c) => {
 
 reservationRoute.get("/:id", async (c) => {
   try {
+    const user = c.get("user");
     const idParam = c.req.param("id");
     if (!idParam) {
       return c.json({ error: "Invalid reservation id" }, 400);
@@ -100,8 +95,8 @@ reservationRoute.get("/:id", async (c) => {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
-    const reservation = await prisma.reservation.findUnique({
-      where: { id },
+    const reservation = await prisma.reservation.findFirst({
+      where: { id, userId: user.id },
     });
 
     if (!reservation) {
@@ -117,6 +112,7 @@ reservationRoute.get("/:id", async (c) => {
 
 reservationRoute.post("/", async (c) => {
   try {
+    const user = c.get("user");
     const body = await c.req.json();
 
     const parsed = createReservationSchema.safeParse(body);
@@ -134,6 +130,7 @@ reservationRoute.post("/", async (c) => {
 
     const created = await prisma.reservation.create({
       data: {
+        userId: user.id,
         name,
         date,
         note: note ?? null,
@@ -150,6 +147,7 @@ reservationRoute.post("/", async (c) => {
 
 reservationRoute.patch("/:id", async (c) => {
   try {
+    const user = c.get("user");
     const idParam = c.req.param("id");
 
     if (!idParam) {
@@ -192,8 +190,8 @@ reservationRoute.patch("/:id", async (c) => {
       data.status = status;
     }
 
-    const updated = await prisma.reservation.update({
-      where: { id },
+    const updated = await prisma.reservation.updateMany({
+      where: { id, userId: user.id },
       data,
     });
 
@@ -206,6 +204,7 @@ reservationRoute.patch("/:id", async (c) => {
 
 reservationRoute.delete("/:id", async (c) => {
   try {
+    const user = c.get("user");
     const idParam = c.req.param("id");
     if (!idParam) {
       return c.json({ error: "Invalid reservation id" }, 400);
@@ -215,8 +214,8 @@ reservationRoute.delete("/:id", async (c) => {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
-    const deleted = await prisma.reservation.delete({
-      where: { id },
+    const deleted = await prisma.reservation.deleteMany({
+      where: { id, userId: user.id },
     });
     return c.json({ deleted }, 200);
   } catch (e) {
@@ -224,3 +223,9 @@ reservationRoute.delete("/:id", async (c) => {
     return c.json({ error: "Failed to delete reservation" }, 500);
   }
 });
+
+// データベースのカラムにuserIdを追加してPostしたときにAuthユーザーの情報(useId)が入るように修正をしました。
+// ログインした時にログインしたAuthユーザーのIdを元にデータベース内のデータを取得するように変更済み
+// その他、delete,update,/:idなどもmiddlewareから取得されたユーザー情報を元に操作するような安全設計に変更中です。
+// フロント側でエラーをキャッチした時に404に寄せるためにPATCHとDELETEが返す値を変更する必要がある。
+// それを続きからやってください。

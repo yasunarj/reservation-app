@@ -25,6 +25,7 @@ enum ReservationStatus {
 // 予約テーブル
 model Reservation {
   id        Int               @id @default(autoincrement())
+  userId    String
   name      String
   date      DateTime
   note      String?

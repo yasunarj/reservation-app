@@ -10,7 +10,7 @@ export type ApiErrorBody = {
 
 type ApiFetchInit = RequestInit & {
   _retried?: boolean;
-}
+};
 
 export class ApiError extends Error {
   status: number;
@@ -33,16 +33,25 @@ const shouldSkipRefresh = (path: string) => {
   );
 };
 
-const refreshAuth = async (): Promise<boolean> => {
-  try {
-    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    });
-    return res.ok;
-  } catch {
-    return false;
+let refreshPromise: Promise<boolean> | null = null;
+
+const refreshAuthShared = async (): Promise<boolean> => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+        });
+        return res.ok;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
   }
+  return refreshPromise;
 };
 
 export const apiFetch = async <T>(
@@ -59,7 +68,7 @@ export const apiFetch = async <T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const alreadyRetried = (init)._retried === true;
+  const alreadyRetried = init._retried === true;
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
@@ -68,10 +77,9 @@ export const apiFetch = async <T>(
   });
 
   if (res.status === 401 && !alreadyRetried && !shouldSkipRefresh(path)) {
-    const ok = await refreshAuth();
+    const ok = await refreshAuthShared();
     if (ok) {
-      const retryInit = { ...init, headers };
-      retryInit._retried = true;
+      const retryInit = { ...init, headers, _retried: true };
 
       const retryRes = await fetch(`${API_BASE_URL}${path}`, {
         ...retryInit,
@@ -90,7 +98,7 @@ export const apiFetch = async <T>(
       const msg = body?.error ?? `Request failed (${retryRes.status})`;
       throw new ApiError(msg, retryRes.status, body);
     }
-    // refresh失敗 → そのまま元の401を通常エラーとして扱う(下へ落ちる)e
+    // refresh失敗 → そのまま元の401を通常エラーとして扱う(下へ落ちる)
   }
 
   if (!res.ok) {
@@ -104,4 +112,3 @@ export const apiFetch = async <T>(
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 };
-
