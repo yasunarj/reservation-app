@@ -190,12 +190,16 @@ reservationRoute.patch("/:id", async (c) => {
       data.status = status;
     }
 
-    const updated = await prisma.reservation.updateMany({
+    const result = await prisma.reservation.updateMany({
       where: { id, userId: user.id },
       data,
     });
 
-    return c.json(updated, 200);
+    if (result.count === 0) {
+      return c.json({ error: "reservation not found" }, 404);
+    }
+
+    return c.json({ ok: true }, 200);
   } catch (e) {
     console.error("Error updating reservation", e);
     return c.json({ error: "Failed to update reservation" }, 500);
@@ -214,18 +218,17 @@ reservationRoute.delete("/:id", async (c) => {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
-    const deleted = await prisma.reservation.deleteMany({
+    const result = await prisma.reservation.deleteMany({
       where: { id, userId: user.id },
     });
-    return c.json({ deleted }, 200);
+
+    if (result.count === 0) {
+      return c.json({ error: "reservation not found" }, 404);
+    }
+
+    return c.json({ ok: true }, 200);
   } catch (e) {
     console.error("Error deleting reservation", e);
     return c.json({ error: "Failed to delete reservation" }, 500);
   }
 });
-
-// データベースのカラムにuserIdを追加してPostしたときにAuthユーザーの情報(useId)が入るように修正をしました。
-// ログインした時にログインしたAuthユーザーのIdを元にデータベース内のデータを取得するように変更済み
-// その他、delete,update,/:idなどもmiddlewareから取得されたユーザー情報を元に操作するような安全設計に変更中です。
-// フロント側でエラーをキャッチした時に404に寄せるためにPATCHとDELETEが返す値を変更する必要がある。
-// それを続きからやってください。

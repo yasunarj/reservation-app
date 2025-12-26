@@ -6,9 +6,9 @@ import { supabase } from "../lib/supabase.js";
 
 const authRoute = new Hono();
 
-const loginSchema = z.object({
+const authSchema = z.object({
   email: z.email("メールアドレスの形式が正しくありません"),
-  password: z.string().min(4, "パスワードは４文字以上で入力してください"),
+  password: z.string().min(6, "パスワードは６文字以上で入力してください"),
 });
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -17,20 +17,68 @@ const issuer = `${supabaseUrl}/auth/v1`;
 const getSupabaseJwtSecretKey = () => {
   const secret = process.env.SUPABASE_JWT_SECRET;
   if (!secret) throw new Error("SUPABASE_JWT_SECRET is not set");
-  return new TextEncoder().encode(secret);
+  return new TextEncoder().encode(secret.trim());
 };
 
 const cookieBaseOptions = {
-  httpOnly: true,
-  secure: false,
-  sameSite: "Lax" as const,
+  httpOnly: true, //javaScriptからcookieを取得できないようにしている。
+  secure: false, //HTTPSのみでcookieが扱える。開発時にはHTTPを使用するため、falseにしておく必要がある。
+  sameSite: "Lax" as const, //クロスサイトからcookieを取得することができないように設定する。
   path: "/",
 };
+
+authRoute.post("/signup", async (c) => {
+  try {
+    const body = await c.req.json();
+    const parsed = authSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid request body", detail: parsed.error },
+        400
+      );
+    }
+
+    const { email, password } = parsed.data;
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      return c.json({ error: error.message }, 400);
+    }
+
+    const session = data.session;
+    if (session) {
+      setCookie(c, "authToken", session.access_token, {
+        ...cookieBaseOptions,
+        maxAge: 60 * 60 * 2,
+      });
+
+      setCookie(c, "refreshToken", session.refresh_token, {
+        ...cookieBaseOptions,
+        maxAge: 60 * 60 * 24 * 30,
+      });
+    }
+
+    return c.json(
+      {
+        ok: true,
+        needsLogin: !session,
+      },
+      201
+    );
+  } catch (e) {
+    console.error("Error in /auth/signup:", e);
+    return c.json({ error: "Failed to signup" }, 500);
+  }
+});
 
 authRoute.post("/login", async (c) => {
   try {
     const body = await c.req.json();
-    const parsed = loginSchema.safeParse(body);
+    const parsed = authSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
         { error: "Invalid request body", details: parsed.error },
@@ -131,7 +179,8 @@ authRoute.get("/me", async (c) => {
     }
 
     const { payload } = await jwtVerify(token, getSupabaseJwtSecretKey(), {
-      issuer, algorithms: ["HS256"]
+      issuer,
+      algorithms: ["HS256"],
     });
     const p = payload as any;
 
@@ -150,3 +199,5 @@ authRoute.get("/me", async (c) => {
 });
 
 export { authRoute };
+
+// route/auth.tsへsignupのapi、froundEnd/app/signUp/page.tsxを追加しました。成功時に返す値にuserを追加した方が良いとアドバイスあり、またフロント側でも修正箇所が何点かあるのでそこを直して実際にサインアップできるかを確認しましょう。
