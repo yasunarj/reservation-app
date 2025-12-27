@@ -53,10 +53,12 @@ const SignUpPage = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email">メールアドレス</label>
             <input
+              disabled={isSubmitting}
+              required
               type="email"
               id="email"
               value={email}
@@ -69,11 +71,14 @@ const SignUpPage = () => {
           <div>
             <label htmlFor="password">パスワード</label>
             <input
+              disabled={isSubmitting}
+              required
+              minLength={6}
               type="password"
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
+              autoComplete="new-password"
               className="w-full border rounded px-3 py-2 text-sm"
             />
           </div>
@@ -83,7 +88,7 @@ const SignUpPage = () => {
             disabled={isSubmitting}
             className=" w-full py-2 text-sm text-white bg-blue-600 rounded disabled:opacity-60 cursor-pointer hover:bg-blue-700"
           >
-            {isSubmitting ? "サインイン中..." : "サインイン"}
+            {isSubmitting ? "サインアップ中..." : "サインアップ"}
           </button>
         </form>
       </div>

@@ -79,7 +79,8 @@ export const apiFetch = async <T>(
   if (res.status === 401 && !alreadyRetried && !shouldSkipRefresh(path)) {
     const ok = await refreshAuthShared();
     if (ok) {
-      const retryInit = { ...init, headers, _retried: true };
+      const retryHeaders = new Headers(headers);
+      const retryInit = { ...init, headers: retryHeaders, _retried: true };
 
       const retryRes = await fetch(`${API_BASE_URL}${path}`, {
         ...retryInit,

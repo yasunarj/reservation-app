@@ -19,13 +19,26 @@ export const authMiddleware = async (c: Context, next: Next) => {
 
   try {
     const { payload } = await jwtVerify(token, getSupabaseJwtSecretKey(), {
-      issuer
+      issuer,
+      algorithms: ["HS256"],
     });
 
+    const p = payload as any;
+
+    const id = p.sub;
+    if (!id) return c.json({ error: "Invalid token (no sub" }, 401);
+
+    const email = typeof p.email === "string" ? p.email : null;
+
+    const metaName =
+      p.user_metadata && typeof p.user_metadata.name === "string"
+        ? p.user_metadata.name
+        : null;
+
     c.set("user", {
-      id: payload.sub,
-      email: payload.email ?? null,
-      name: (payload as any).user_metadata?.name ?? payload.email ?? null,
+      id,
+      email,
+      name: metaName ?? null
     });
 
     await next();

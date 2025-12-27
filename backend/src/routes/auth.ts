@@ -14,17 +14,30 @@ const authSchema = z.object({
 const supabaseUrl = process.env.SUPABASE_URL!;
 const issuer = `${supabaseUrl}/auth/v1`;
 
+const verifyOptions = { issuer, algorithms: ["HS256"] };
+
+const cookieBaseOptions = {
+  httpOnly: true, //javaScriptからcookieを取得できないようにしている。
+  secure: process.env.NODE_ENV === "production", //HTTPSのみでcookieが扱える。開発時にはHTTPを使用するため、falseにしておく必要がある。
+  sameSite: "Lax" as const, //クロスサイトからcookieを取得することができないように設定する。
+  path: "/",
+};
+
+const issueCookies = (c: any, accessToken: string, refreshToken: string) => {
+  setCookie(c, "authToken", accessToken, {
+    ...cookieBaseOptions,
+    maxAge: 60 * 60 * 2,
+  });
+  setCookie(c, "refreshToken", refreshToken, {
+    ...cookieBaseOptions,
+    maxAge: 60 * 60 * 24 * 30,
+  });
+};
+
 const getSupabaseJwtSecretKey = () => {
   const secret = process.env.SUPABASE_JWT_SECRET;
   if (!secret) throw new Error("SUPABASE_JWT_SECRET is not set");
   return new TextEncoder().encode(secret.trim());
-};
-
-const cookieBaseOptions = {
-  httpOnly: true, //javaScriptからcookieを取得できないようにしている。
-  secure: false, //HTTPSのみでcookieが扱える。開発時にはHTTPを使用するため、falseにしておく必要がある。
-  sameSite: "Lax" as const, //クロスサイトからcookieを取得することができないように設定する。
-  path: "/",
 };
 
 authRoute.post("/signup", async (c) => {
@@ -33,7 +46,7 @@ authRoute.post("/signup", async (c) => {
     const parsed = authSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { error: "Invalid request body", detail: parsed.error },
+        { error: "Invalid request body", details: parsed.error },
         400
       );
     }
@@ -51,21 +64,39 @@ authRoute.post("/signup", async (c) => {
 
     const session = data.session;
     if (session) {
-      setCookie(c, "authToken", session.access_token, {
-        ...cookieBaseOptions,
-        maxAge: 60 * 60 * 2,
-      });
+      issueCookies(c, session.access_token, session.refresh_token);
 
-      setCookie(c, "refreshToken", session.refresh_token, {
-        ...cookieBaseOptions,
-        maxAge: 60 * 60 * 24 * 30,
-      });
+      const { payload } = await jwtVerify(
+        session.access_token,
+        getSupabaseJwtSecretKey(),
+        verifyOptions
+      );
+
+      const p = payload as any;
+
+      const id = p.sub;
+      if (!id) {
+        return c.json({ error: "Invalid token (no sub) " }, 401);
+      }
+
+      return c.json(
+        {
+          ok: true,
+          needsLogin: false,
+          user: {
+            id,
+            email: p.email ?? null,
+            name: p.user_metadata?.name ?? p.email ?? null,
+          },
+        },
+        201
+      );
     }
 
     return c.json(
       {
         ok: true,
-        needsLogin: !session,
+        needsLogin: true,
       },
       201
     );
@@ -97,25 +128,17 @@ authRoute.post("/login", async (c) => {
       return c.json({ error: error?.message ?? "ログインに失敗しました" }, 401);
     }
 
-    const accessToken = data.session.access_token;
-    const refreshToken = data.session.refresh_token;
-
-    setCookie(c, "authToken", accessToken, {
-      ...cookieBaseOptions,
-      maxAge: 60 * 60 * 2, // ←おすすめ（2時間）
-    });
-
-    setCookie(c, "refreshToken", refreshToken, {
-      ...cookieBaseOptions,
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    issueCookies(c, data.session.access_token, data.session.refresh_token);
 
     const { payload } = await jwtVerify(
-      accessToken,
+      data.session.access_token,
       getSupabaseJwtSecretKey(),
-      { issuer }
+      verifyOptions
     );
     const p = payload as any;
+
+    const id = p.sub;
+    if (!id) return c.json({ error: "Invalid token (no sub)" }, 401);
 
     return c.json(
       {
@@ -154,15 +177,7 @@ authRoute.post("/refresh", async (c) => {
       return c.json({ error: error?.message ?? "Failed to refresh" }, 401);
     }
 
-    setCookie(c, "authToken", data.session.access_token, {
-      ...cookieBaseOptions,
-      maxAge: 60 * 60 * 2,
-    });
-
-    setCookie(c, "refreshToken", data.session.refresh_token, {
-      ...cookieBaseOptions,
-      maxAge: 60 * 60 * 24 * 30,
-    });
+    issueCookies(c, data.session.access_token, data.session.refresh_token);
 
     return c.json({ ok: true }, 200);
   } catch (e) {
@@ -178,11 +193,15 @@ authRoute.get("/me", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const { payload } = await jwtVerify(token, getSupabaseJwtSecretKey(), {
-      issuer,
-      algorithms: ["HS256"],
-    });
+    const { payload } = await jwtVerify(
+      token,
+      getSupabaseJwtSecretKey(),
+      verifyOptions
+    );
     const p = payload as any;
+
+    const id = p.sub;
+    if (!id) c.json({ error: "Invalid token (no sub)" }, 401);
 
     return c.json(
       {
@@ -199,5 +218,3 @@ authRoute.get("/me", async (c) => {
 });
 
 export { authRoute };
-
-// route/auth.tsへsignupのapi、froundEnd/app/signUp/page.tsxを追加しました。成功時に返す値にuserを追加した方が良いとアドバイスあり、またフロント側でも修正箇所が何点かあるのでそこを直して実際にサインアップできるかを確認しましょう。
