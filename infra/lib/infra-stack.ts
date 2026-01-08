@@ -80,22 +80,27 @@ export class InfraStack extends cdk.Stack {
       "Allow Lambda to access Postgres"
     );
 
-    const helloLambda = new lambda.Function(this, "HelloLambda", {
+    const db_check_lambda = new lambda.Function(this, "HelloLambda", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
-      code: lambda.Code.fromInline(`
-        exports.handler = async () => {
-          return {
-            statusCode: 200,
-            body: JSON.stringify({ message: "Hello from Lambda in VPC!" })
-          };
-        };
-      `),
+      code: lambda.Code.fromAsset("lambda"),
 
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [lambdaSg],
+      environment: {
+        DB_HOST: db.dbInstanceEndpointAddress,
+        DB_PORT: db.dbInstanceEndpointPort,
+        DB_SECRET_NAME: db.secret!.secretName,
+      },
     });
+
+    db_check_lambda.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE,
+    });
+
+    // Secrets ManagerからDB 認証情報を読む権限を付与
+    db.secret?.grantRead(db_check_lambda);
 
     new cdk.CfnOutput(this, "VpcId", { value: vpc.vpcId });
     new cdk.CfnOutput(this, "DbEndpoint", {
@@ -110,7 +115,20 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, "LambdaSgId", { value: lambdaSg.securityGroupId });
     new cdk.CfnOutput(this, "DbSgId", { value: dbSg.securityGroupId });
     new cdk.CfnOutput(this, "LambdaName", {
-      value: helloLambda.functionName,
-    })
+      value: db_check_lambda.functionName,
+    });
   }
 }
+
+// VPCの中にRDSとLambdaを置いて、Security Groupで5432だけ通し、パスワードはSecrets ManagerからLambdaが読む
+// CDK：AWSに「箱・鍵・通路」を作るだけ
+
+// Lambda：実行されるのは Test / API 呼び出し時
+
+// Secrets Manager：パスワードの金庫
+
+// RDS：private subnet 内の金庫
+
+// SecurityGroup：誰がどこに入れるかの門番
+
+// NAT：AWS外に出るときの出口

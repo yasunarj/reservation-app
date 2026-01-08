@@ -1,0 +1,10 @@
+{
+  "name": "reservation-lambda",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "hono": "^4.11.3",
+    "pg": "^8.11.5"
+  }
+}
