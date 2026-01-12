@@ -80,7 +80,7 @@ export class InfraStack extends cdk.Stack {
       "Allow Lambda to access Postgres"
     );
 
-    const db_check_lambda = new lambda.Function(this, "HelloLambda", {
+    const apiLambda = new lambda.Function(this, "ReservationApiLambda", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset("lambda"),
@@ -92,15 +92,17 @@ export class InfraStack extends cdk.Stack {
         DB_HOST: db.dbInstanceEndpointAddress,
         DB_PORT: db.dbInstanceEndpointPort,
         DB_SECRET_NAME: db.secret!.secretName,
+        DB_INIT_ENABLED: "false",
+        DB_MIGRATE_ENABLED: "false"
       },
     });
 
-    db_check_lambda.addFunctionUrl({
+    apiLambda.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
     });
 
     // Secrets ManagerからDB 認証情報を読む権限を付与
-    db.secret?.grantRead(db_check_lambda);
+    db.secret?.grantRead(apiLambda);
 
     new cdk.CfnOutput(this, "VpcId", { value: vpc.vpcId });
     new cdk.CfnOutput(this, "DbEndpoint", {
@@ -115,7 +117,7 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, "LambdaSgId", { value: lambdaSg.securityGroupId });
     new cdk.CfnOutput(this, "DbSgId", { value: dbSg.securityGroupId });
     new cdk.CfnOutput(this, "LambdaName", {
-      value: db_check_lambda.functionName,
+      value: apiLambda.functionName,
     });
   }
 }
