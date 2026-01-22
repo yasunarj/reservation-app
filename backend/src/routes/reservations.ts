@@ -1,7 +1,5 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
-import { prisma } from "../prisma.js";
 import { authMiddleware } from "../middleware/auth.js";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
@@ -12,6 +10,13 @@ type Reservation = {
   date: string;
   note: string | null;
   status: ReservationStatus;
+};
+
+type UpdateReservation = {
+  name?: string;
+  date?: string;
+  note?: string | null;
+  status?: ReservationStatus;
 };
 
 const baseReservationSchema = z.object({
@@ -27,57 +32,58 @@ const updateReservationSchema = baseReservationSchema.partial();
 export const reservationRoute = new Hono();
 
 reservationRoute.use("*", authMiddleware);
+//
 
 reservationRoute.get("/", async (c) => {
   try {
     const user = c.get("user");
-    const q = c.req.query("q")?.trim();
-    const sort = c.req.query("sort") ?? "date_asc";
 
-    const pageParam = c.req.query("page");
-    const perPageParam = c.req.query("perPage");
+    const lambdaBase = process.env.AWS_API_BASE_URL;
+    if (!lambdaBase)
+      return c.json({ error: "AWS_API_BASE_URL is not set" }, 500);
 
-    const page = pageParam ? Math.max(Number(pageParam), 1) : 1;
-    const perPage = perPageParam ? Math.max(Number(perPageParam), 1) : 10;
+    const url = new URL(lambdaBase.replace(/\/+$/, "") + "/reservations");
+    url.searchParams.set("userId", user.id);
 
-    const where: Prisma.ReservationWhereInput = {
-      userId: user.id,
-      ...(q
-        ? {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { note: { contains: q, mode: "insensitive" } },
-            ],
-          }
-        : {}),
-    };
+    const q = c.req.query("q");
+    const sort = c.req.query("sort");
+    const page = c.req.query("page");
+    const perPage = c.req.query("perPage");
 
-    let orderBy: Prisma.ReservationOrderByWithRelationInput = {
-      date: "asc",
-    };
+    if (q) url.searchParams.set("q", q);
+    if (sort) url.searchParams.set("sort", sort);
+    if (page) url.searchParams.set("page", page);
+    if (perPage) url.searchParams.set("perPage", perPage);
 
-    if (sort === "date_desc") {
-      orderBy = { date: "desc" };
+    const res = await fetch(url.toString(), { method: "GET" });
+
+    const raw = await res.text();
+    let data: any = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
     }
 
-    const totalCount = await prisma.reservation.count({ where });
+    if (!res.ok) {
+      return c.json(
+        { error: data?.error ?? "failed", detail: data },
+        res.status as any
+      );
+    }
 
-    const reservations = await prisma.reservation.findMany({
-      where,
-      orderBy,
-      skip: (page - 1) * perPage,
-      take: perPage,
-    });
-
-    return c.json({
-      items: reservations,
-      totalCount,
-      page,
-      perPage,
-      totalPages: Math.ceil(totalCount / perPage),
-    });
+    return c.json(
+      {
+        items: data.items ?? [],
+        totalCount: data.totalCount ?? 0,
+        page: data.page ?? 1,
+        perPage: data.perPage ?? 5,
+        totalPages: data.totalPages ?? 1,
+      },
+      200
+    );
   } catch (e) {
-    console.error("Error fetching reservations:", e);
+    console.error("Proxy Get /reservations failed:", e);
     return c.json({ error: "Failed to fetch reservations" }, 500);
   }
 });
@@ -85,25 +91,37 @@ reservationRoute.get("/", async (c) => {
 reservationRoute.get("/:id", async (c) => {
   try {
     const user = c.get("user");
+
     const idParam = c.req.param("id");
-    if (!idParam) {
-      return c.json({ error: "Invalid reservation id" }, 400);
-    }
-
     const id = Number(idParam);
-    if (Number.isNaN(id)) {
+    if (!idParam || Number.isNaN(id)) {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
-    const reservation = await prisma.reservation.findFirst({
-      where: { id, userId: user.id },
-    });
+    const lambdaBase = process.env.AWS_API_BASE_URL;
+    if (!lambdaBase)
+      return c.json({ error: "AWS_API_BASE_URL is not set" }, 500);
 
-    if (!reservation) {
-      return c.json({ error: "reservation not found" }, 404);
+    const url = new URL(lambdaBase.replace(/\/+$/, "") + `/reservations/${id}`);
+    url.searchParams.set("userId", user.id);
+
+    const res = await fetch(url.toString(), { method: "GET" });
+    const raw = await res.text();
+    let data: any = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
     }
 
-    return c.json(reservation, 200);
+    if (!res.ok) {
+      return c.json(
+        { error: data?.error ?? "failed", detail: data },
+        res.status as any
+      );
+    }
+
+    return c.json(data.reservation, 200);
   } catch (e) {
     console.error("Error fetching reservation by id:", e);
     return c.json({ error: "Failed to fetch reservation" }, 500);
@@ -113,32 +131,46 @@ reservationRoute.get("/:id", async (c) => {
 reservationRoute.post("/", async (c) => {
   try {
     const user = c.get("user");
-    const body = await c.req.json();
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
     const parsed = createReservationSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        {
-          error: "Invalid request body",
-          details: parsed.error,
-        },
+        { error: "Invalid request body", details: parsed.error },
         400
       );
     }
 
-    const { name, date, note, status } = parsed.data;
+    const lambdaBase = process.env.AWS_API_BASE_URL;
+    if (!lambdaBase)
+      return c.json({ error: "AWS_API_BASE_URL is not set" }, 500);
 
-    const created = await prisma.reservation.create({
-      data: {
-        userId: user.id,
-        name,
-        date,
-        note: note ?? null,
-        status: status ?? "pending",
-      },
+    const url = new URL(lambdaBase.replace(/\/+$/, "") + "/reservations");
+    url.searchParams.set("userId", user.id);
+
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(parsed.data),
     });
 
-    return c.json(created, 201);
+    const raw = await res.text();
+    let data: any = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
+    }
+
+    if (!res.ok) {
+      return c.json(
+        { error: data?.error ?? "failed", detail: data },
+        res.status as any
+      );
+    }
+
+    return c.json(data.reservation, 201);
   } catch (e) {
     console.error("Error creating reservation", e);
     return c.json({ error: "Failed to create reservation" }, 500);
@@ -149,18 +181,13 @@ reservationRoute.patch("/:id", async (c) => {
   try {
     const user = c.get("user");
     const idParam = c.req.param("id");
-
-    if (!idParam) {
-      return c.json({ error: "Invalid reservation id" }, 400);
-    }
-
     const id = Number(idParam);
-
-    if (Number.isNaN(id)) {
+    if (!idParam || Number.isNaN(id)) {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
     const body = await c.req.json();
+    if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
     const parsed = updateReservationSchema.safeParse(body);
     if (!parsed.success) {
@@ -170,16 +197,24 @@ reservationRoute.patch("/:id", async (c) => {
       );
     }
 
+    const lambdaBase = process.env.AWS_API_BASE_URL;
+    if (!lambdaBase) {
+      return c.json({ error: "AWS_API_BASE_URL is not set" }, 500);
+    }
+
+    const url = new URL(lambdaBase.replace(/\/+$/, "") + `/reservations/${id}`);
+    url.searchParams.set("userId", user.id);
+
     const { name, date, note, status } = parsed.data;
 
-    const data: Prisma.ReservationUpdateInput = {};
+    const data: UpdateReservation = {};
 
     if (name !== undefined) {
       data.name = name;
     }
 
     if (date !== undefined) {
-      data.date = date;
+      data.date = date.toISOString();
     }
 
     if (note !== undefined) {
@@ -190,16 +225,28 @@ reservationRoute.patch("/:id", async (c) => {
       data.status = status;
     }
 
-    const result = await prisma.reservation.updateMany({
-      where: { id, userId: user.id },
-      data,
+    const res = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
     });
 
-    if (result.count === 0) {
-      return c.json({ error: "reservation not found" }, 404);
+    const raw = await res.text();
+    let resData: any = null;
+    try {
+      resData = raw ? JSON.parse(raw) : null;
+    } catch {
+      resData = { raw };
     }
 
-    return c.json({ ok: true }, 200);
+    if (!res.ok) {
+      return c.json(
+        { error: resData?.error ?? "failed", detail: data },
+        res.status as any
+      );
+    }
+
+    return c.json({ ok: true, reservation: resData.reservation }, 200);
   } catch (e) {
     console.error("Error updating reservation", e);
     return c.json({ error: "Failed to update reservation" }, 500);
@@ -210,25 +257,44 @@ reservationRoute.delete("/:id", async (c) => {
   try {
     const user = c.get("user");
     const idParam = c.req.param("id");
-    if (!idParam) {
-      return c.json({ error: "Invalid reservation id" }, 400);
-    }
     const id = Number(idParam);
-    if (Number.isNaN(id)) {
+    if (!idParam || Number.isNaN(id)) {
       return c.json({ error: "Invalid reservation id" }, 400);
     }
 
-    const result = await prisma.reservation.deleteMany({
-      where: { id, userId: user.id },
+    const lambdaBase = process.env.AWS_API_BASE_URL;
+    if (!lambdaBase) {
+      return c.json({ error: "AWS_API_BASE_URL is not set" }, 500);
+    }
+
+    const url = new URL(lambdaBase.replace(/\/+$/, "") + `/reservations/${id}`);
+    url.searchParams.set("userId", user.id);
+
+    const res = await fetch(url.toString(), {
+      method: "DELETE",
     });
 
-    if (result.count === 0) {
-      return c.json({ error: "reservation not found" }, 404);
+    const raw = await res.text();
+    let data: any = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { raw };
     }
 
-    return c.json({ ok: true }, 200);
+    if (!res.ok) {
+      return c.json(
+        { error: data?.error ?? "failed", detail: data },
+        res.status as any
+      );
+    }
+
+    return c.json({ ok: true, deletedId: data?.deletedId ?? id }, 200);
   } catch (e) {
     console.error("Error deleting reservation", e);
     return c.json({ error: "Failed to delete reservation" }, 500);
   }
 });
+
+//・front側でdetailページが作成されていない。
+//・予約一覧ページのページングの処理が未実装になっている(現在は適当な数字で代入してある)
