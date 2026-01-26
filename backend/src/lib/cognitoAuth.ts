@@ -3,7 +3,8 @@ import {
   InitiateAuthCommand, // ログインして
   SignUpCommand, // 登録して
   ConfirmSignUpCommand, // 確認コードを送って
-  RespondToAuthChallengeCommand, // チャレンジに答えて
+  RespondToAuthChallengeCommand,
+  ResendConfirmationCodeCommand, // チャレンジに答えて
 } from "@aws-sdk/client-cognito-identity-provider";
 
 const region = process.env.AWS_REGION; // どのリージョンのCognitoか
@@ -25,7 +26,7 @@ export const cognitoLogin = async (email: string, password: string) => {
         USERNAME: email,
         PASSWORD: password,
       },
-    })
+    }),
   );
 
   if (out.ChallengeName) {
@@ -57,7 +58,7 @@ export const cognitoSignUp = async (email: string, password: string) => {
       ClientId: clientId,
       Username: email,
       Password: password,
-    })
+    }),
   );
   return out;
 };
@@ -68,7 +69,17 @@ export const cognitoConfirmSignUp = async (email: string, code: string) => {
       ClientId: clientId,
       Username: email,
       ConfirmationCode: code,
-    })
+    }),
+  );
+  return out;
+};
+
+export const cognitoResendConfirmationCode = async (email: string) => {
+  const out = await cip.send(
+    new ResendConfirmationCodeCommand({
+      ClientId: clientId,
+      Username: email,
+    }),
   );
   return out;
 };
@@ -81,7 +92,7 @@ export const cognitoRefresh = async (refreshToken: string) => {
       AuthParameters: {
         REFRESH_TOKEN: refreshToken,
       },
-    })
+    }),
   );
 
   const ar = out.AuthenticationResult;

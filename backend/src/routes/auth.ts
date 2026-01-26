@@ -1,18 +1,18 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { jwtVerify } from "jose";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
-import { supabase } from "../lib/supabase.js";
 
 // cognitoを使用した認証
 import {
   cognitoLogin,
   cognitoSignUp,
   cognitoConfirmSignUp,
+  cognitoRefresh,
+  cognitoResendConfirmationCode,
 } from "../lib/cognitoAuth.js";
 import { verifyCognitoAccessToken } from "../lib/cognitoJwt.js";
 
-const authRoute = new Hono();
+const authRoute = new Hono()
 
 const authSchema = z.object({
   email: z.email("メールアドレスの形式が正しくありません"),
@@ -25,15 +25,14 @@ const authSchema = z.object({
     .regex(/[^A-Za-z0-9]/, "記号を1文字以上含めてください"),
 });
 
+const resendSchema = z.object({
+  email: z.email("メールアドレスの形式が正しくありません")
+});
+
 const confirmSchema = z.object({
   email: z.email(),
   code: z.string().min(1),
 });
-
-const supabaseUrl = process.env.SUPABASE_URL!;
-const issuer = `${supabaseUrl}/auth/v1`;
-
-const verifyOptions = { issuer, algorithms: ["HS256"] };
 
 const cookieBaseOptions = {
   httpOnly: true, //javaScriptからcookieを取得できないようにしている。
@@ -42,111 +41,63 @@ const cookieBaseOptions = {
   path: "/",
 };
 
-const issueCookies = (c: any, accessToken: string, refreshToken: string) => {
-  setCookie(c, "authToken", accessToken, {
+const issueCookies = (
+  c: any,
+  tokens: { accessToken: string; refreshToken?: string },
+) => {
+  setCookie(c, "authToken", tokens.accessToken, {
     ...cookieBaseOptions,
     maxAge: 60 * 60 * 2,
   });
-  setCookie(c, "refreshToken", refreshToken, {
-    ...cookieBaseOptions,
-    maxAge: 60 * 60 * 24 * 30,
-  });
+
+  if (tokens.refreshToken) {
+    setCookie(c, "refreshToken", tokens.refreshToken, {
+      ...cookieBaseOptions,
+      maxAge: 60 * 60 * 24 * 30,
+    });
+  }
 };
 
-const getSupabaseJwtSecretKey = () => {
-  const secret = process.env.SUPABASE_JWT_SECRET;
-  if (!secret) throw new Error("SUPABASE_JWT_SECRET is not set");
-  return new TextEncoder().encode(secret.trim());
-};
-
-//   try {
-//     const body = await c.req.json();
-//     const parsed = authSchema.safeParse(body);
-//     if (!parsed.success) {
-//       return c.json(
-//         { error: "Invalid request body", details: parsed.error },
-//         400
-//       );
-//     }
-
-//     const { email, password } = parsed.data;
-
-//     const { data, error } = await supabase.auth.signUp({
-//       email,
-//       password,
-//     });
-
-//     if (error) {
-//       return c.json({ error: error.message }, 400);
-//     }
-
-//     const session = data.session;
-//     if (session) {
-//       issueCookies(c, session.access_token, session.refresh_token);
-
-//       const { payload } = await jwtVerify(
-//         session.access_token,
-//         getSupabaseJwtSecretKey(),
-//         verifyOptions
-//       );
-
-//       const p = payload as any;
-
-//       const id = p.sub;
-//       if (!id) {
-//         return c.json({ error: "Invalid token (no sub) " }, 401);
-//       }
-
-//       return c.json(
-//         {
-//           ok: true,
-//           needsLogin: false,
-//           user: {
-//             id,
-//             email: p.email ?? null,
-//             name: p.user_metadata?.name ?? p.email ?? null,
-//           },
-//         },
-//         201
-//       );
-//     }
-
-//     return c.json(
-//       {
-//         ok: true,
-//         needsLogin: true,
-//       },
-//       201
-//     );
-//   } catch (e) {
-//     console.error("Error in /auth/signup:", e);
-//     return c.json({ error: "Failed to signup" }, 500);
-//   }
-// });
 authRoute.post("/signup", async (c) => {
   try {
     const body = await c.req.json();
     const parsed = authSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json(
-        { error: "Invalid request body", details: parsed.error },
-        400
-      );
+      return c.json({ error: "Invalid request body", details: parsed.error }, 400);
     }
 
     const { email, password } = parsed.data;
 
-    await cognitoSignUp(email, password);
+    try {
+      await cognitoSignUp(email, password);
+      return c.json({ ok: true, needsConfirm: true }, 201);
+    } catch (e: any) {
+      if (e.name === "UsernameExistsException") {
+        try {
+          await cognitoResendConfirmationCode(email);
 
-    return c.json({ ok: true, needsConfirm: true }, 201);
+          return c.json({ ok: true, needsConfirm: true, info: "Confirmation code resent." }, 200)
+        } catch (re: any) {
+          console.warn("Resend failed:", re?.name, re?.message);
+          return c.json(
+            {
+              ok: true,
+              needsLogin: true,
+              info: "Already registered. Please login.",
+              reason: re?.name ?? null,
+            },
+            200
+          )
+        }
+      }
+
+      throw e;
+    }
   } catch (e: any) {
     console.error("Error in /auth/signup:", e);
-    return c.json(
-      { error: e?.name ?? "Failed to signup", message: e?.message },
-      400
-    );
+    return c.json({ error: e?.name ?? "Failed to signup", message: e?.message }, 400);
   }
-});
+})
 
 authRoute.post("/confirm", async (c) => {
   try {
@@ -155,23 +106,42 @@ authRoute.post("/confirm", async (c) => {
     if (!parsed.success) {
       return c.json(
         { error: "Invalid request body", details: parsed.error },
-        400
+        400,
       );
     }
 
     const { email, code } = parsed.data;
-
     await cognitoConfirmSignUp(email, code);
-
-    return c.json({ ok: true }, 200);
+    return c.json({ ok: true, needsConfirm: true }, 201);
   } catch (e: any) {
     console.error("Error in /auth/confirm:", e);
     return c.json(
       { error: e?.name ?? "Failed to confirm", message: e?.message },
-      400
+      400,
     );
   }
 });
+
+authRoute.post("/resend", async (c) => {
+  try {
+    const body = await c.req.json();
+    const parsed = resendSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid request body", details: parsed.error }, 400);
+    }
+
+    await cognitoResendConfirmationCode(parsed.data.email);
+
+    return c.json({ ok: true }, 200);
+  } catch (e: any) {
+    if (e?.name === "LimitExceededException") {
+      return c.json({ error: "RATE_LIMITED", message: "しばらく待ってから再送してください。" }, 429)
+    }
+
+    console.error("Error in /auth/resend:", e);
+    return c.json({ error: e?.name ?? "Failed to resend", message: e?.message }, 400)
+  }
+})
 
 authRoute.post("/login", async (c) => {
   try {
@@ -180,7 +150,7 @@ authRoute.post("/login", async (c) => {
     if (!parsed.success) {
       return c.json(
         { error: "Invalid request body", details: parsed.error },
-        400
+        400,
       );
     }
 
@@ -194,11 +164,14 @@ authRoute.post("/login", async (c) => {
           error: "Auth Challenge required",
           challengeName: result.challengeName,
         },
-        400
+        400,
       );
     }
 
-    issueCookies(c, result.accessToken, result.refreshToken);
+    issueCookies(c, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+    });
 
     const user = await verifyCognitoAccessToken(result.accessToken);
 
@@ -210,7 +183,7 @@ authRoute.post("/login", async (c) => {
           name: user.user.email ?? null,
         },
       },
-      200
+      200,
     );
   } catch (e) {
     console.error("Error in login:", e);
@@ -227,59 +200,51 @@ authRoute.post("/logout", async (c) => {
 authRoute.post("/refresh", async (c) => {
   try {
     const refreshToken = getCookie(c, "refreshToken");
-    if (!refreshToken) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
+    if (!refreshToken) return c.json({ error: "Unauthorized" }, 401);
 
-    const { data, error } = await supabase.auth.refreshSession({
-      refresh_token: refreshToken,
-    });
+    const out = await cognitoRefresh(refreshToken);
 
-    if (error || !data.session) {
-      return c.json({ error: error?.message ?? "Failed to refresh" }, 401);
-    }
+    issueCookies(c, { accessToken: out.accessToken });
 
-    issueCookies(c, data.session.access_token, data.session.refresh_token);
+    const { user } = await verifyCognitoAccessToken(out.accessToken);
 
-    return c.json({ ok: true }, 200);
+    return c.json(
+      {
+        ok: true,
+        user: {
+          id: user.id,
+          email: user.email ?? null,
+          name: user.email ?? null,
+        },
+        expiresIn: out.expiresIn ?? null,
+      },
+      200,
+    );
   } catch (e) {
     console.error("Error in /auth/refresh:", e);
-    return c.json({ error: "Failed to refresh" }, 500);
+    return c.json({ error: "Failed to refresh" }, 401);
   }
 });
 
 authRoute.get("/me", async (c) => {
   try {
     const token = getCookie(c, "authToken");
-    if (!token) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
 
-    const { payload } = await jwtVerify(
-      token,
-      getSupabaseJwtSecretKey(),
-      verifyOptions
-    );
-    const p = payload as any;
-
-    const id = p.sub;
-    if (!id) c.json({ error: "Invalid token (no sub)" }, 401);
+    const { user } = await verifyCognitoAccessToken(token);
 
     return c.json(
       {
-        id: p.sub,
-        email: p.email ?? null,
-        name: p.user_metadata?.name ?? p.email ?? null,
+        id: user.id,
+        email: user.email ?? null,
+        name: user.email ?? null,
       },
-      200
+      200,
     );
   } catch (e) {
-    console.error("Error in authMiddleware:", e);
+    console.error("Error in /auth/me:", e);
     return c.json({ error: "ME_INVALID_TOKEN" }, 401);
   }
 });
 
 export { authRoute };
-
-// authRoute.post("/login", async (c) => {
-// authRoute.post("/signup", async (c) => {

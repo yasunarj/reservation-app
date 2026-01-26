@@ -53,7 +53,7 @@ export class InfraStack extends cdk.Stack {
 
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T4G,
-        ec2.InstanceSize.MICRO
+        ec2.InstanceSize.MICRO,
       ),
 
       credentials: dbCredentials,
@@ -77,7 +77,7 @@ export class InfraStack extends cdk.Stack {
     dbSg.addIngressRule(
       lambdaSg,
       ec2.Port.tcp(5432),
-      "Allow Lambda to access Postgres"
+      "Allow Lambda to access Postgres",
     );
 
     const apiLambda = new lambda.Function(this, "ReservationApiLambda", {
@@ -93,7 +93,7 @@ export class InfraStack extends cdk.Stack {
         DB_PORT: db.dbInstanceEndpointPort,
         DB_SECRET_NAME: db.secret!.secretName,
         DB_INIT_ENABLED: "false",
-        DB_MIGRATE_ENABLED: "false"
+        DB_MIGRATE_ENABLED: "false",
       },
     });
 

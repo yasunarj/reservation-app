@@ -20,7 +20,7 @@ export const useApi = (onUnauthorized?: OnUnauthorized) => {
       }
       return false;
     },
-    [router, onUnauthorized]
+    [router, onUnauthorized],
   );
 
   const toMessage = useCallback((e: unknown) => {

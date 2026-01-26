@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ReservationsList from "./components/ReservationsList";
 import LogoutButton from "./components/LogoutButton";
 import { apiFetch } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
+import { useRequireAuth } from "@/lib/useRequireAuth";
 
 type ReservationStatus = "pending" | "confirmed" | "cancelled";
 
@@ -27,30 +28,43 @@ type ReservationResponse = {
 };
 
 const ReservationsPage = () => {
+  const cancelledRef = useRef<boolean>(true);
   const router = useRouter();
   const onUnauthorized = useCallback(() => {
     router.push("/login");
   }, [router]);
 
+  const { checking } = useRequireAuth();
   const { handleApiError } = useApi(onUnauthorized);
   const [data, setData] = useState<ReservationResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (checking) return;
+    cancelledRef.current = false;
+
     const run = async () => {
       try {
         const data = await apiFetch<ReservationResponse>("/reservations");
-        setData(data);
+        if (!cancelledRef.current) setData(data);
       } catch (e) {
         if (handleApiError(e)) return;
         console.error(e);
+        if (!cancelledRef.current) setData(null);
       } finally {
-        setLoading(false);
+        if (!cancelledRef.current) setLoading(false);
       }
     };
 
     run();
-  }, [handleApiError]);
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [checking, handleApiError]);
+
+  if (checking) {
+    return <p>確認中...</p>;
+  }
 
   if (loading) {
     return <p className="p-6">読み込み中...</p>;

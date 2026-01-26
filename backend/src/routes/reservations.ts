@@ -68,7 +68,7 @@ reservationRoute.get("/", async (c) => {
     if (!res.ok) {
       return c.json(
         { error: data?.error ?? "failed", detail: data },
-        res.status as any
+        res.status as any,
       );
     }
 
@@ -80,7 +80,7 @@ reservationRoute.get("/", async (c) => {
         perPage: data.perPage ?? 5,
         totalPages: data.totalPages ?? 1,
       },
-      200
+      200,
     );
   } catch (e) {
     console.error("Proxy Get /reservations failed:", e);
@@ -117,7 +117,7 @@ reservationRoute.get("/:id", async (c) => {
     if (!res.ok) {
       return c.json(
         { error: data?.error ?? "failed", detail: data },
-        res.status as any
+        res.status as any,
       );
     }
 
@@ -138,7 +138,7 @@ reservationRoute.post("/", async (c) => {
     if (!parsed.success) {
       return c.json(
         { error: "Invalid request body", details: parsed.error },
-        400
+        400,
       );
     }
 
@@ -166,7 +166,7 @@ reservationRoute.post("/", async (c) => {
     if (!res.ok) {
       return c.json(
         { error: data?.error ?? "failed", detail: data },
-        res.status as any
+        res.status as any,
       );
     }
 
@@ -193,7 +193,7 @@ reservationRoute.patch("/:id", async (c) => {
     if (!parsed.success) {
       return c.json(
         { error: "Invalid request body", details: parsed.error },
-        400
+        400,
       );
     }
 
@@ -242,7 +242,7 @@ reservationRoute.patch("/:id", async (c) => {
     if (!res.ok) {
       return c.json(
         { error: resData?.error ?? "failed", detail: data },
-        res.status as any
+        res.status as any,
       );
     }
 
@@ -285,7 +285,7 @@ reservationRoute.delete("/:id", async (c) => {
     if (!res.ok) {
       return c.json(
         { error: data?.error ?? "failed", detail: data },
-        res.status as any
+        res.status as any,
       );
     }
 

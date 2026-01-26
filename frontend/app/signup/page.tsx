@@ -4,6 +4,12 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api";
 
+type ApiReturnValue = {
+  ok: boolean;
+  needsConfirm?: boolean;
+  needsLogin?: boolean;
+}
+
 const SignUpPage = () => {
   const router = useRouter();
   const [email, setEmail] = useState<string>("");
@@ -17,16 +23,23 @@ const SignUpPage = () => {
     setIsSubmitting(true);
 
     try {
-      const res = await apiFetch<{ ok: boolean; needsLogin: boolean }>(
+      const res = await apiFetch<ApiReturnValue>(
         "/auth/signup",
         {
           method: "POST",
           body: JSON.stringify({ email, password }),
-        }
+        },
       );
 
+      if (res.needsConfirm) 
+        {
+        alert("確認コード送信しました。メールを確認してコードを入力してください");
+        router.push(`/confirm?email=${encodeURIComponent(email)}`);
+        return;
+      }
+
       if (res.needsLogin) {
-        router.push("/login");
+        router.push(`/login?email=${encodeURIComponent(email)}`);
         return;
       }
 
@@ -37,7 +50,7 @@ const SignUpPage = () => {
     } catch (e) {
       console.error(e);
       setErrorMessage(
-        e instanceof ApiError ? e.message : "通信エラーが発生しました"
+        e instanceof ApiError ? e.message : "通信エラーが発生しました",
       );
     } finally {
       setIsSubmitting(false);

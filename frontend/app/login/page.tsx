@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api";
 
 const LoginPage = () => {
   const router = useRouter();
+  const sp = useSearchParams();
+  const presentEmail = sp.get("email") ?? "";
 
-  const [email, setEmail] = useState<string>("test@example.com");
-  const [password, setPassword] = useState<string>("password123");
+  const [email, setEmail] = useState<string>(presentEmail);
+  const [password, setPassword] = useState<string>("090JGDJmjtw!");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -23,14 +25,14 @@ const LoginPage = () => {
         {
           method: "POST",
           body: JSON.stringify({ email, password }),
-        }
+        },
       );
 
       router.push("/reservations");
     } catch (e) {
       console.error(e);
       setErrorMessage(
-        e instanceof ApiError ? e.message : "通信エラーが発生しました"
+        e instanceof ApiError ? e.message : "通信エラーが発生しました",
       );
     } finally {
       setIsSubmitting(false);

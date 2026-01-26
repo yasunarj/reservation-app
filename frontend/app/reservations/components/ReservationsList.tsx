@@ -87,7 +87,7 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("perPage", String(data.perPage));
 
       const nextData = await apiFetch<ReservationResponse>(
-        `/reservations?${params.toString()}`
+        `/reservations?${params.toString()}`,
       );
       setData(nextData);
     } catch (e) {
@@ -108,7 +108,7 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("perPage", String(data.perPage));
 
       const nextData = await apiFetch<ReservationResponse>(
-        `/reservations?${params.toString()}`
+        `/reservations?${params.toString()}`,
       );
 
       setData(nextData);
@@ -135,7 +135,7 @@ const ReservationsList = ({ initialData }: Props) => {
       params.set("perPage", String(data.perPage));
 
       const nextData = await apiFetch<ReservationResponse>(
-        `/reservations?${params.toString()}`
+        `/reservations?${params.toString()}`,
       );
       setData(nextData);
     } catch (e) {

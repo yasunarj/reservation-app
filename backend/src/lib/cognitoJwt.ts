@@ -7,8 +7,7 @@ const clientId = process.env.COGNITO_CLIENT_ID;
 
 if (!region) throw new Error("AWS_REGION is required");
 if (!clientId) throw new Error("COGNITO_CLIENT_ID is required");
-if (!userPoolId)
-  throw new Error("COGNITO_USER_POOL_ID is required");
+if (!userPoolId) throw new Error("COGNITO_USER_POOL_ID is required");
 
 const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
 const resolvedJwks =
@@ -29,7 +28,7 @@ const getTokenFromAuthHeader = (authHeader?: string | null): string | null => {
 };
 
 export const verifyCognitoAccessToken = async (
-  token: string
+  token: string,
 ): Promise<{ payload: JWTPayload; user: CognitoUser }> => {
   const { payload } = await jwtVerify(token, JWKS, {
     issuer,

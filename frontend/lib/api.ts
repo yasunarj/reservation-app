@@ -1,7 +1,10 @@
 import { RequestInit } from "next/dist/server/web/spec-extension/request";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
+  process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL ?? "http://localhost:8787";
+
+const joinUrl = (base: string, path: string) =>
+  `${base.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 
 export type ApiErrorBody = {
   error?: string;
@@ -39,7 +42,7 @@ const refreshAuthShared = async (): Promise<boolean> => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        const res = await fetch(joinUrl(API_BASE_URL, "/auth/refresh"), {
           method: "POST",
           credentials: "include",
         });
@@ -56,7 +59,7 @@ const refreshAuthShared = async (): Promise<boolean> => {
 
 export const apiFetch = async <T>(
   path: string,
-  init: ApiFetchInit = {}
+  init: ApiFetchInit = {},
 ): Promise<T> => {
   const headers = new Headers(init.headers);
 
@@ -70,7 +73,7 @@ export const apiFetch = async <T>(
 
   const alreadyRetried = init._retried === true;
 
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(joinUrl(API_BASE_URL, path), {
     ...init,
     headers,
     credentials: "include", // ★ Cookie送信の要
@@ -82,7 +85,7 @@ export const apiFetch = async <T>(
       const retryHeaders = new Headers(headers);
       const retryInit = { ...init, headers: retryHeaders, _retried: true };
 
-      const retryRes = await fetch(`${API_BASE_URL}${path}`, {
+      const retryRes = await fetch(joinUrl(API_BASE_URL, path), {
         ...retryInit,
         credentials: "include",
       });
